@@ -5,7 +5,7 @@ const CAMPAIGN_CONFIG = {
     contactName: "+60 16-410 5382",   //+60 16-410 5382 (to test blurry receipt) || Whatsapp Automation
     
     // Campaign trigger Message 
-    triggerMessage: "Hi, I want to join Haleon SG Oral Month Campaign.", //Hi, I want to join Haleon SG Oral Month Campaign.
+    triggerMessage: "Hi, I want to join Haleon SG Oral Month Campaign.", //Fluimucil Buy and Redeem Campaign!!​
     
     // Campaign identification
     exactCampaignName: "Haleon SG Oral Month Campaign!​",  // //Haleon SG Oral Month Campaign!
