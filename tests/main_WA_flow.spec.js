@@ -185,7 +185,7 @@ test.describe('WhatsApp Automation Tests', () => {
 
         try {
             // Send trigger message
-       /*     await test.step('Send trigger message', async () => {
+            await test.step('Send trigger message', async () => {
                 console.log("============ TEST 2 - Send trigger message =============");
                 console.log(`📤 Using trigger message: "${CAMPAIGN_CONFIG.triggerMessage}"`);
                 await sendMessage(page, CAMPAIGN_CONFIG.triggerMessage, "Trigger message");
@@ -224,7 +224,7 @@ test.describe('WhatsApp Automation Tests', () => {
                     await page.screenshot({ path: 'screenshots/campaign-not-found-debug.png', fullPage: true });
                     throw new Error(`Test failed: EXACT campaign name '${CAMPAIGN_CONFIG.exactCampaignName}' not detected`);
                 }
-            });   */
+            });   
 
             // Click Proceed button (only if campaign name was found)
             await test.step('Click most recent Proceed button', async () => {
