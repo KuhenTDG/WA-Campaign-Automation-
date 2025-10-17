@@ -84,7 +84,6 @@ async function uploadReceipt(page, receiptPath) {
   }
 }
 
-
 // Chat with agent function - CLEANED VERSION
 async function chatWithAgent(page, agentMessage, expectedResponse) {
   console.log("🤖 Starting Chat with Agent workflow...");
@@ -192,6 +191,7 @@ async function chatWithAgent(page, agentMessage, expectedResponse) {
     throw error;
   }
 }
+
 
 // Export only what we need
 module.exports = {

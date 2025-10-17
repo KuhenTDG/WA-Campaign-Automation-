@@ -197,7 +197,7 @@ test.describe('WhatsApp Automation Tests', () => {
             await test.step('Detect exact campaign name', async () => {
                 console.log(`🔍 Looking for campaign: "${CAMPAIGN_CONFIG.exactCampaignName}"`);
 
-                const maxWaitTime = 60000; // 60 seconds max waiting time
+                const maxWaitTime = 30000; // 60 seconds max waiting time
                 const interval = 3000; // check every 3 seconds
                 const start = Date.now();
                 let found = false;
@@ -224,7 +224,7 @@ test.describe('WhatsApp Automation Tests', () => {
                     await page.screenshot({ path: 'screenshots/campaign-not-found-debug.png', fullPage: true });
                     throw new Error(`Test failed: EXACT campaign name '${CAMPAIGN_CONFIG.exactCampaignName}' not detected`);
                 }
-            });   
+            });
 
             // Click Proceed button (only if campaign name was found)
             await test.step('Click most recent Proceed button', async () => {
@@ -271,57 +271,55 @@ test.describe('WhatsApp Automation Tests', () => {
                     // Wait for the response after clicking proceed
                     await page.waitForTimeout(5000);
 
-                    // Get page content to check for name-related prompts
+                    // Get page content
                     const pageContent = await page.textContent('body');
 
-                    // Define possible name request variations (case-insensitive)
-                    const nameRequestPatterns = [
-                        "please reply with your name",
-                        "reply with your name",
-                        "please enter your name",
-                        "enter your name",
-                        "send your name",
-                        "send full name",
-                        "provide your name",
-                        "tell us your name",
-                        "share your name"
-                    ];
+                    // Get the expected instruction from config
+                    const expectedInstruction = CAMPAIGN_CONFIG.expectedInstructions.nameRequest;
 
-                    let nameRequestFound = false;
-                    let foundPattern = "";
+                    let instructionFound = false;
 
-                    // Check if any of the patterns exist in the page content (case-insensitive)
+                    // Check if the instruction exists in the page content (case-insensitive)
                     if (pageContent) {
                         const lowerPageContent = pageContent.toLowerCase();
 
-                        for (const pattern of nameRequestPatterns) {
-                            if (lowerPageContent.includes(pattern.toLowerCase())) {
-                                nameRequestFound = true;
-                                foundPattern = pattern;
-                                break;
-                            }
+                        if (Array.isArray(expectedInstruction)) {
+                            // Check if ALL parts of the instruction exist
+                            instructionFound = expectedInstruction.every(instr =>
+                                lowerPageContent.includes(instr.toLowerCase())
+                            );
+                        } else {
+                            // Single string fallback
+                            instructionFound = lowerPageContent.includes(expectedInstruction.toLowerCase());
                         }
                     }
 
-                    if (nameRequestFound) {
-                        console.log(`✅ Name request message detected! Found pattern: "${foundPattern}"`);
-                        await page.screenshot({ path: 'screenshots/name-request-detected.png', fullPage: true });
+                    if (instructionFound) {
+                        console.log(`✅ Name request message detected! Found: "${expectedInstruction}"`);
+                        await page.screenshot({
+                            path: 'screenshots/name-request-detected.png',
+                            fullPage: true
+                        });
                     } else {
-                        throw new Error("Name request message not found");
+                        throw new Error(`Name request message not found. Expected: "${expectedInstruction}"`);
                     }
 
                 } catch (error) {
                     console.log("❌ Name request message not found");
-                    await page.screenshot({ path: 'screenshots/name-request-debug.png', fullPage: true });
+                    await page.screenshot({
+                        path: 'screenshots/name-request-debug.png',
+                        fullPage: true
+                    });
 
                     // Log actual content for debugging
                     const actualContent = await page.textContent('body').catch(() => 'Could not get page content');
                     console.log("📝 Actual page content preview:", actualContent?.substring(0, 500) + "...");
+                    console.log(`🎯 Expected instruction: "${CAMPAIGN_CONFIG.expectedInstructions.nameRequest}"`);
 
                     // Close browser and fail the test
                     console.log("🚫 Closing browser due to name request message not found");
                     await page.close();
-                    throw new Error("Test failed: Name request message not detected after clicking Proceed");
+                    throw new Error(`Test failed: Expected instruction not detected. Expected: "${CAMPAIGN_CONFIG.expectedInstructions.nameRequest}"`);
                 }
             });
 
@@ -341,294 +339,330 @@ test.describe('WhatsApp Automation Tests', () => {
 
     //=================================== Test 3 Name Validation ===========================================================================
 
-// Test 3: Name validation with error sequence
-test('Send user name with error sequence and validation', async () => {
-    test.setTimeout(180000); // 3 minutes
+    // Test 3: Name validation with error sequence
+    test('Send user name with error sequence and validation', async () => {
+        test.setTimeout(180000); // 3 minutes
 
-    const userName = "Kuhen test";
-    let validationResults = {
-        passed: true,
-        failures: [],
-        invalidNamesAccepted: []
-    };
+        //    const userName = "Kuhen test";
+        let validationResults = {
+            passed: true,
+            failures: [],
+            invalidNamesAccepted: []
+        };
 
-    // FIRST: Verify name request message is present before starting validation
-    await test.step('Verify name request message before validation', async () => {
-        console.log("========== TEST 3 Starting - Checking for name request message ===========");
+        // FIRST: Verify name request message is present before starting validation
+        await test.step('Verify name request message before validation', async () => {
+            console.log("========== TEST 3 Starting - Checking for name request message ===========");
 
-        try {
-            await page.waitForTimeout(5000);
-            const pageContent = await page.textContent('body');
+            try {
+                await page.waitForTimeout(5000);
+                const pageContent = await page.textContent('body');
 
-            // Define possible name request variations
-            const nameRequestPatterns = [
-                "please reply with your name",
-                "reply with your name",
-                "please enter your name",
-                "enter your name",
-                "send your name",
-                "send full name",
-                "provide your name"
-            ];
+                // Get the expected instruction from config
+                const expectedInstruction = CAMPAIGN_CONFIG.expectedInstructions.nameRequest;
 
-            let nameRequestFound = false;
-            let foundPattern = "";
+                let instructionFound = false;
 
-            if (pageContent) {
-                const lowerPageContent = pageContent.toLowerCase();
-                for (const pattern of nameRequestPatterns) {
-                    if (lowerPageContent.includes(pattern.toLowerCase())) {
-                        nameRequestFound = true;
-                        foundPattern = pattern;
-                        break;
+                if (pageContent) {
+                    const lowerPageContent = pageContent.toLowerCase();
+
+                    if (Array.isArray(expectedInstruction)) {
+                        // Check if ALL parts of the instruction exist
+                        instructionFound = expectedInstruction.every(instr =>
+                            lowerPageContent.includes(instr.toLowerCase())
+                        );
+                    } else {
+                        // Single string fallback
+                        instructionFound = lowerPageContent.includes(expectedInstruction.toLowerCase());
                     }
                 }
-            }
 
-            if (nameRequestFound) {
-                console.log(`✅ Name request message detected! Found pattern: "${foundPattern}"`);
-                console.log("🚀 Proceeding with name validation test...");
-                await page.screenshot({ path: 'screenshots/name-request-verified-test3.png', fullPage: true });
-            } else {
-                throw new Error("Name request message not found - cannot start validation");
-            }
-
-        } catch (error) {
-            console.log("❌ Name request message not found at start of Test 3");
-            await page.screenshot({ path: 'screenshots/test3-name-request-missing.png', fullPage: true });
-            console.log("🚫 Closing browser - name request message not found at start of Test 3");
-            await page.close();
-            throw new Error("Test 3 failed: Name request message not detected - cannot proceed with validation");
-        }
-    });
-
-    await test.step('Send user name with error sequence and validation', async () => {
-        console.log("========== TEST 3 Starting name validation test ===========");
-        await page.waitForTimeout(9000);
-
-        // Error name test cases
-        const invalidNames = ['123', '✅✅✅', 'Kuhen test ✅', 'Kuhen test 123'];
-
-        for (const [index, invalidName] of invalidNames.entries()) {
-            console.log(`🚫 Sending invalid name #${index + 1}: "${invalidName}"`);
-            await sendMessageToBox(page, invalidName);
-            
-            // WAIT 5 seconds after sending for system to process
-            await page.waitForTimeout(5000);
-
-            console.log(`🔍 Checking system response for "${invalidName}"...`);
-
-            let rejected = false;
-            let proceeded = false;
-            let attempts = 0;
-            const maxAttempts = 10;
-
-            while (!rejected && !proceeded && attempts < maxAttempts) {
-                attempts++;
-                
-                // WAIT 1 second before each check attempt
-                await page.waitForTimeout(1000);
-
-                try {
-                    const selectableTexts = await page.$$('span._ao3e.selectable-text.copyable-text, span.selectable-text');
-                    
-                    // Check if selectableTexts is valid and iterable
-                    if (!selectableTexts || !Array.isArray(selectableTexts) || selectableTexts.length === 0) {
-                        console.log(`⚠️ Selectable texts not ready yet, waiting...`);
-                        await page.waitForTimeout(2000);
-                        continue;
-                    }
-
-                    for (let element of selectableTexts) {
-                        const text = await element.textContent();
-
-                        if (text) {
-                            // CRITICAL: Check for ACCEPTANCE patterns FIRST (system moved to receipt upload)
-                            if (
-                                text.includes("Please submit your receipt as a proof of purchase") ||
-                                text.includes("The receipt must contain the following information") ||
-                                (text.includes("Store Name") && text.includes("Receipt Date") && text.includes("Product Name")) ||
-                                text.includes("receipt must contain the following information") ||
-                                text.includes("clear and readable receipt")
-                            ) {
-                                console.log(`❌ CRITICAL: System ACCEPTED invalid name "${invalidName}" and proceeded to receipt upload!`);
-                                console.log(`📝 Receipt upload message detected: ${text.substring(0, 200)}...`);
-                                proceeded = true;
-                                break;
-                            }
-
-                            // Check for REJECTION patterns (only if not proceeded)
-                            // TRUE REJECTION = System asks for name again with error message
-                            if (
-                                text.includes("Please enter your FULL NAME ONLY as per your NRIC") ||
-                                text.includes("without any numbers, symbols or images") ||
-                                text.includes("Invalid name format") ||
-                                text.includes("Name should only contain letters") ||
-                                text.includes("Please try again") ||
-                                text.includes("Please reply with your Name.​")
-                            ) {
-                                console.log(`✅ System REJECTED invalid name "${invalidName}" as expected!`);
-                                console.log(`📝 Rejection message: ${text.substring(0, 200)}...`);
-                                rejected = true;
-                                await page.screenshot({
-                                    path: `screenshots/name-rejected-${invalidName.replace(/[^a-zA-Z0-9]/g, '_')}.png`,
-                                    fullPage: true
-                                });
-                                break;
-                            }
-                        }
-                    }
-
-                    if (rejected || proceeded) {
-                        break;
-                    }
-
-                } catch (error) {
-                    console.log(`⚠️ Error during message check: ${error.message}`);
-                    // WAIT 2 seconds after error
-                    await page.waitForTimeout(2000);
+                if (instructionFound) {
+                    console.log(`✅ Name request message detected!`);
+                    console.log(`🎯 Verified all parts: ${JSON.stringify(expectedInstruction)}`);
+                    console.log("🚀 Proceeding with name validation test...");
+                    await page.screenshot({
+                        path: 'screenshots/name-request-verified-test3.png',
+                        fullPage: true
+                    });
+                } else {
+                    throw new Error(`Name request message not found. Expected: ${JSON.stringify(expectedInstruction)}`);
                 }
 
-                if (!rejected && !proceeded) {
-                    console.log(`Waiting for system response... (${attempts}/${maxAttempts})`);
-                    // WAIT 2 seconds before next attempt
-                    await page.waitForTimeout(2000);
-                }
-            }
-
-            // Handle the results
-            if (proceeded) {
-                const failureMessage = `❌ VALIDATION FAILED: System accepted invalid name "${invalidName}" and proceeded to receipt upload step!`;
-                console.log(failureMessage);
-                validationResults.passed = false;
-                validationResults.failures.push(failureMessage);
-                validationResults.invalidNamesAccepted.push(invalidName);
-
+            } catch (error) {
+                console.log("❌ Name request message not found at start of Test 3");
                 await page.screenshot({
-                    path: `screenshots/FAILED-name-accepted-${invalidName.replace(/[^a-zA-Z0-9]/g, '_')}-${Date.now()}.png`,
+                    path: 'screenshots/test3-name-request-missing.png',
                     fullPage: true
                 });
 
-                console.log(`🛑 STOPPING name validation test - system accepted invalid name. Moving to next test...`);
-                break;
-            } else if (rejected) {
-                console.log(`✅ System correctly rejected "${invalidName}"`);
-                console.log(`⏳ Waiting 8 seconds for system to complete error message sequence...`);
-                // WAIT 8 seconds after rejection
-                await page.waitForTimeout(8000);
-                console.log(`✅ Wait complete. Ready for next invalid name test.`);
-            } else {
-                console.log(`⚠️ No clear response detected for "${invalidName}"`);
-                // WAIT 8 seconds if unclear
-                await page.waitForTimeout(8000);
+                // Log actual content for debugging
+                const actualContent = await page.textContent('body').catch(() => 'Could not get page content');
+                console.log("📝 Actual page content preview:", actualContent?.substring(0, 500) + "...");
+                console.log(`🎯 Expected instruction parts: ${JSON.stringify(CAMPAIGN_CONFIG.expectedInstructions.nameRequest)}`);
+
+                console.log("🚫 Closing browser - name request message not found at start of Test 3");
+                await page.close();
+                throw new Error("Test 3 failed: Name request message not detected - cannot proceed with validation");
             }
-        }
+        });
 
-        // Only send correct name if no invalid names were accepted
-        if (validationResults.invalidNamesAccepted.length === 0) {
-            console.log(`✅ All invalid names were rejected. Now sending correct name: "${userName}"`);
-            await sendMessageToBox(page, userName);
-            
-            // WAIT 5 seconds after sending valid name
-            await page.waitForTimeout(5000);
 
-            console.log("🔍 Verifying acceptance of valid name...");
+        await test.step('Send user name with error sequence and validation', async () => {
+            console.log("========== TEST 3 Starting name validation test ===========");
+            await page.waitForTimeout(9000);
 
-            let accepted = false;
-            let attempts = 0;
-            const maxAttempts = 10;
+            // Error name test cases
+            const invalidNames = ['123', '✅✅✅', 'Kuhen test ✅', 'Kuhen test 123'];
 
-            while (!accepted && attempts < maxAttempts) {
-                attempts++;
-                
-                // WAIT 1 second before each check
-                await page.waitForTimeout(1000);
+            for (const [index, invalidName] of invalidNames.entries()) {
+                console.log(`🚫 Sending invalid name #${index + 1}: "${invalidName}"`);
+                await sendMessageToBox(page, invalidName);
 
-                try {
-                    const selectableTexts = await page.$$('span._ao3e.selectable-text.copyable-text, span.selectable-text');
-                    
-                    // Check if selectableTexts is valid
-                    if (!selectableTexts || !Array.isArray(selectableTexts) || selectableTexts.length === 0) {
-                        console.log(`⚠️ Elements not ready yet, waiting...`);
-                        await page.waitForTimeout(2000);
-                        continue;
-                    }
+                // WAIT 5 seconds after sending for system to process
+                await page.waitForTimeout(5000);
 
-                    for (let element of selectableTexts) {
-                        const text = await element.textContent();
+                console.log(`🔍 Checking system response for "${invalidName}"...`);
 
-                        if (text && (
-                            text.includes("Please submit your receipt as a proof of purchase") ||
-                            (text.includes("Store Name") && text.includes("Receipt Date") && text.includes("Product Name"))
-                        )) {
-                            console.log(`🎉 Valid name "${userName}" ACCEPTED! System moved to receipt upload step.`);
-                            accepted = true;
-                            await page.screenshot({ path: 'screenshots/valid-name-accepted.png', fullPage: true });
+                let rejected = false;
+                let proceeded = false;
+                let attempts = 0;
+                const maxAttempts = 10;
+
+                while (!rejected && !proceeded && attempts < maxAttempts) {
+                    attempts++;
+
+                    // WAIT 1 second before each check attempt
+                    await page.waitForTimeout(1000);
+
+                    try {
+                        const selectableTexts = await page.$$('span._ao3e.selectable-text.copyable-text, span.selectable-text');
+
+                        // Check if selectableTexts is valid and iterable
+                        if (!selectableTexts || !Array.isArray(selectableTexts) || selectableTexts.length === 0) {
+                            console.log(`⚠️ Selectable texts not ready yet, waiting...`);
+                            await page.waitForTimeout(2000);
+                            continue;
+                        }
+
+                        for (let element of selectableTexts) {
+                            const text = await element.textContent();
+
+                            if (text) {
+                                // Get receipt upload patterns from config
+                                const receiptUploadPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptUploadRequest;
+                                const receiptRequirements = CAMPAIGN_CONFIG.expectedInstructions.receiptRequirements;
+
+                                const lowerText = text.toLowerCase();
+                                let isReceiptUploadMessage = false;
+
+                                // Check if ALL receipt upload instruction parts are present
+                                if (Array.isArray(receiptUploadPatterns)) {
+                                    isReceiptUploadMessage = receiptUploadPatterns.every(pattern =>
+                                        lowerText.includes(pattern.toLowerCase())
+                                    );
+                                } else {
+                                    // Single string fallback
+                                    isReceiptUploadMessage = lowerText.includes(receiptUploadPatterns.toLowerCase());
+                                }
+
+
+
+                                // CRITICAL: Check if system ACCEPTED invalid name and moved to receipt upload
+                                if (isReceiptUploadMessage) {
+                                    console.log(`❌ CRITICAL: System ACCEPTED invalid name "${invalidName}" and proceeded to receipt upload!`);
+                                    console.log(`📝 Receipt upload message detected: ${text.substring(0, 200)}...`);
+                                    console.log(`🎯 Matched patterns: ${JSON.stringify(receiptUploadPatterns)}`);
+                                    proceeded = true;
+                                    break;
+                                }
+
+
+                                // Check for REJECTION patterns (only if not proceeded)
+                                // TRUE REJECTION = System asks for name again with error message
+                                const rejectionPatterns = CAMPAIGN_CONFIG.expectedInstructions.nameRejection;
+                                const lowerMsg = text.toLowerCase();
+
+                                let isRejectionMessage = false;
+
+                                // Check if ALL rejection pattern parts exist
+                                if (Array.isArray(rejectionPatterns)) {
+                                    isRejectionMessage = rejectionPatterns.every(pattern =>
+                                        lowerMsg.includes(pattern.toLowerCase())
+                                    );
+                                } else {
+                                    // Single string fallback
+                                    isRejectionMessage = lowerMsg.includes(rejectionPatterns.toLowerCase());
+                                }
+
+                                if (isRejectionMessage) {
+                                    console.log(`✅ System REJECTED invalid name "${invalidName}" as expected!`);
+                                    console.log(`📝 Rejection message: ${text.substring(0, 200)}...`);
+                                    console.log(`🎯 Matched rejection patterns: ${JSON.stringify(rejectionPatterns)}`);
+                                    rejected = true;
+                                    await page.screenshot({
+                                        path: `screenshots/name-rejected-${invalidName.replace(/[^a-zA-Z0-9]/g, '_')}.png`,
+                                        fullPage: true
+                                    });
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (rejected || proceeded) {
                             break;
                         }
+
+                    } catch (error) {
+                        console.log(`⚠️ Error during message check: ${error.message}`);
+                        // WAIT 2 seconds after error
+                        await page.waitForTimeout(2000);
                     }
 
-                    if (accepted) {
-                        break;
+                    if (!rejected && !proceeded) {
+                        console.log(`Waiting for system response... (${attempts}/${maxAttempts})`);
+                        // WAIT 2 seconds before next attempt
+                        await page.waitForTimeout(2000);
+                    }
+                }
+
+                // Handle the results
+                if (proceeded) {
+                    const failureMessage = `❌ VALIDATION FAILED: System accepted invalid name "${invalidName}" and proceeded to receipt upload step!`;
+                    console.log(failureMessage);
+                    validationResults.passed = false;
+                    validationResults.failures.push(failureMessage);
+                    validationResults.invalidNamesAccepted.push(invalidName);
+
+                    await page.screenshot({
+                        path: `screenshots/FAILED-name-accepted-${invalidName.replace(/[^a-zA-Z0-9]/g, '_')}-${Date.now()}.png`,
+                        fullPage: true
+                    });
+
+                    console.log(`🛑 STOPPING name validation test - system accepted invalid name. Moving to next test...`);
+                    break;
+                } else if (rejected) {
+                    console.log(`✅ System correctly rejected "${invalidName}"`);
+                    console.log(`⏳ Waiting 8 seconds for system to complete error message sequence...`);
+                    // WAIT 8 seconds after rejection
+                    await page.waitForTimeout(8000);
+                    console.log(`✅ Wait complete. Ready for next invalid name test.`);
+                } else {
+                    console.log(`⚠️ No clear response detected for "${invalidName}"`);
+                    // WAIT 8 seconds if unclear
+                    await page.waitForTimeout(8000);
+
+                    // Close the browser after waiting
+                    console.log("🛑 Closing browser due to no response...");
+                    await browser.close();
+                }
+            }
+
+            // Only send correct name if no invalid names were accepted
+            if (validationResults.invalidNamesAccepted.length === 0) {
+                console.log(`✅ All invalid names were rejected. Now sending correct name: "${userName}"`);
+                await sendMessageToBox(page, userName);
+
+                // WAIT 5 seconds after sending valid name
+                await page.waitForTimeout(5000);
+
+                console.log("🔍 Verifying acceptance of valid name...");
+
+                let accepted = false;
+                let attempts = 0;
+                const maxAttempts = 10;
+
+                while (!accepted && attempts < maxAttempts) {
+                    attempts++;
+
+                    // WAIT 1 second before each check
+                    await page.waitForTimeout(1000);
+
+                    try {
+                        const selectableTexts = await page.$$('span._ao3e.selectable-text.copyable-text, span.selectable-text');
+
+                        // Check if selectableTexts is valid
+                        if (!selectableTexts || !Array.isArray(selectableTexts) || selectableTexts.length === 0) {
+                            console.log(`⚠️ Elements not ready yet, waiting...`);
+                            await page.waitForTimeout(2000);
+                            continue;
+                        }
+
+                        for (let element of selectableTexts) {
+                            const text = await element.textContent();
+
+                            if (text && (
+                                text.includes("Please submit your receipt as a proof of purchase") ||
+                                (text.includes("Store Name") && text.includes("Receipt Date") && text.includes("Product Name"))
+                            )) {
+                                console.log(`🎉 Valid name "${userName}" ACCEPTED! System moved to receipt upload step.`);
+                                accepted = true;
+                                await page.screenshot({ path: 'screenshots/valid-name-accepted.png', fullPage: true });
+                                break;
+                            }
+                        }
+
+                        if (accepted) {
+                            break;
+                        }
+
+                    } catch (error) {
+                        console.log(`⚠️ Error checking acceptance: ${error.message}`);
+                        // WAIT 2 seconds after error
+                        await page.waitForTimeout(2000);
                     }
 
-                } catch (error) {
-                    console.log(`⚠️ Error checking acceptance: ${error.message}`);
-                    // WAIT 2 seconds after error
-                    await page.waitForTimeout(2000);
+                    if (!accepted) {
+                        console.log(`❌ Receipt upload instruction not found yet. Waiting 2 seconds... (${attempts}/${maxAttempts})`);
+                        // WAIT 2 seconds before retry
+                        await page.waitForTimeout(2000);
+                    }
                 }
 
                 if (!accepted) {
-                    console.log(`❌ Receipt upload instruction not found yet. Waiting 2 seconds... (${attempts}/${maxAttempts})`);
-                    // WAIT 2 seconds before retry
-                    await page.waitForTimeout(2000);
+                    console.log(`⚠️ No clear success indicator found for valid name "${userName}"`);
+                    const warningMessage = `Valid name "${userName}" may not have been accepted properly - receipt upload instruction not found`;
+                    validationResults.failures.push(warningMessage);
+                    validationResults.passed = false;
                 }
+            } else {
+                console.log(`🚫 Skipping valid name test because system already accepted invalid name(s): ${validationResults.invalidNamesAccepted.join(', ')}`);
             }
 
-            if (!accepted) {
-                console.log(`⚠️ No clear success indicator found for valid name "${userName}"`);
-                const warningMessage = `Valid name "${userName}" may not have been accepted properly - receipt upload instruction not found`;
-                validationResults.failures.push(warningMessage);
-                validationResults.passed = false;
-            }
-        } else {
-            console.log(`🚫 Skipping valid name test because system already accepted invalid name(s): ${validationResults.invalidNamesAccepted.join(', ')}`);
-        }
-
-        await page.screenshot({ path: 'screenshots/name-validation-complete.png', fullPage: true });
-    });
-
-    // Handle test result
-    if (!validationResults.passed) {
-        console.log("\n========== NAME VALIDATION TEST RESULTS ==========");
-        console.log("⚠️ Name validation completed with issues:");
-        validationResults.failures.forEach(failure => console.log(`  - ${failure}`));
-
-        if (validationResults.invalidNamesAccepted.length > 0) {
-            console.log(`\n📋 Invalid names that were incorrectly accepted: ${validationResults.invalidNamesAccepted.join(', ')}`);
-        }
-
-        console.log("\n❌ NAME VALIDATION TEST FAILED");
-        console.log("🌐 Browser remains open for subsequent tests");
-        console.log("⏭️ Moving to next test...");
-        console.log("====================================================\n");
-
-        test.info().attachments.push({
-            name: 'validation-failure-details',
-            contentType: 'text/plain',
-            body: Buffer.from(`Validation Failures:\n${validationResults.failures.join('\n')}\n\nInvalid names accepted: ${validationResults.invalidNamesAccepted.join(', ')}`)
+            await page.screenshot({ path: 'screenshots/name-validation-complete.png', fullPage: true });
         });
 
-        test.fail();
-        throw new Error(`Name validation failed: ${validationResults.failures.join('; ')}`);
-    } else {
-        console.log("\n========== NAME VALIDATION TEST RESULTS ==========");
-        console.log("🎉 Name validation workflow completed successfully!");
-        console.log("✅ All invalid names were properly rejected");
-        console.log("✅ Valid name was properly accepted");
-        console.log("====================================================\n");
-    }
-});
+        // Handle test result
+        if (!validationResults.passed) {
+            console.log("\n========== NAME VALIDATION TEST RESULTS ==========");
+            console.log("⚠️ Name validation completed with issues:");
+            validationResults.failures.forEach(failure => console.log(`  - ${failure}`));
+
+            if (validationResults.invalidNamesAccepted.length > 0) {
+                console.log(`\n📋 Invalid names that were incorrectly accepted: ${validationResults.invalidNamesAccepted.join(', ')}`);
+            }
+
+            console.log("\n❌ NAME VALIDATION TEST FAILED");
+            console.log("🌐 Browser remains open for subsequent tests");
+            console.log("⏭️ Moving to next test...");
+            console.log("====================================================\n");
+
+            test.info().attachments.push({
+                name: 'validation-failure-details',
+                contentType: 'text/plain',
+                body: Buffer.from(`Validation Failures:\n${validationResults.failures.join('\n')}\n\nInvalid names accepted: ${validationResults.invalidNamesAccepted.join(', ')}`)
+            });
+
+            test.fail();
+            throw new Error(`Name validation failed: ${validationResults.failures.join('; ')}`);
+        } else {
+            console.log("\n========== NAME VALIDATION TEST RESULTS ==========");
+            console.log("🎉 Name validation workflow completed successfully!");
+            console.log("✅ All invalid names were properly rejected");
+            console.log("✅ Valid name was properly accepted");
+            console.log("====================================================\n");
+        }
+    });
 
 
     //=================================== Test 4 Upload Receipt ===========================================================================
@@ -665,25 +699,33 @@ test('Send user name with error sequence and validation', async () => {
                 let attempts = 0;
                 const maxAttempts = 10;
 
+                // Reuse the SAME config from earlier
+                const instructionPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptUploadRequest;
+
                 while (!instructionFound && attempts < maxAttempts) {
                     attempts++;
                     console.log(`Attempt ${attempts}: Checking for instruction message...`);
 
                     try {
                         const selectableTexts = await page.$$('span.selectable-text.copyable-text');
-                        const instructionPatterns = [
-                            'Please submit your receipt',
-                            //'Next step',
-                            'Please upload',
-                            'Proceed'
-                        ];
 
                         for (let element of selectableTexts) {
                             const text = await element.textContent();
-                            if (text && instructionPatterns.some(pattern => text.includes(pattern))) {
-                                console.log("✅ Found instruction using selectable-text span!");
-                                instructionFound = true;
-                                break;
+
+                            if (text) {
+                                const lowerText = text.toLowerCase();
+
+                                // Check if ANY of the patterns exist (same logic as before)
+                                const isReceiptInstruction = Array.isArray(instructionPatterns)
+                                    ? instructionPatterns.some(pattern => lowerText.includes(pattern.toLowerCase()))
+                                    : lowerText.includes(instructionPatterns.toLowerCase());
+
+                                if (isReceiptInstruction) {
+                                    console.log("✅ Found instruction using selectable-text span!");
+                                    console.log(`📝 Matched text: ${text.substring(0, 150)}...`);
+                                    instructionFound = true;
+                                    break;
+                                }
                             }
                         }
 
@@ -703,7 +745,7 @@ test('Send user name with error sequence and validation', async () => {
                 }
 
                 if (!instructionFound) {
-                    console.log("⚠️ Receipt instruction not found, proceeding with tests...");
+                    console.log("⚠️ Receipt instruction not found after maximum attempts, proceeding with tests...");
                 }
             });
 
@@ -711,39 +753,44 @@ test('Send user name with error sequence and validation', async () => {
             await test.step('Invalid input validation tests', async () => {
                 console.log("============= Starting invalid input validation tests =============");
 
+                // Get acceptance patterns from config (messages that should NOT appear)
+                const acceptancePatterns = CAMPAIGN_CONFIG.expectedInstructions.submissionAccepted;
+
+                // Helper function to check if system wrongly accepted input
+                const checkForWrongAcceptance = (messages, inputType) => {
+                    for (const message of messages) {
+                        const lowerMessage = message.toLowerCase();
+
+                        // Check if ANY acceptance pattern exists in the message
+                        const wronglyAccepted = Array.isArray(acceptancePatterns)
+                            ? acceptancePatterns.some(pattern => lowerMessage.includes(pattern.toLowerCase()))
+                            : lowerMessage.includes(acceptancePatterns.toLowerCase());
+
+                        if (wronglyAccepted) {
+                            throw new Error(`Program closed: System accepted ${inputType} when it should reject them.`);
+                        }
+                    }
+                };
+
                 // Error Test 1: Send numbers (should be rejected)
                 console.log("⚠️ Error Test 1: Sending numbers...");
                 await sendMessageToBox(page, "123456");
                 await page.waitForTimeout(10000);
 
                 const messages1 = await page.$$eval('[data-testid="msg-container"]', msgs =>
-                    msgs.slice(-2).map(msg => msg.textContent.toLowerCase())
+                    msgs.slice(-2).map(msg => msg.textContent)
                 );
+                checkForWrongAcceptance(messages1, "numbers");
 
-                for (const message of messages1) {
-                    if (message.includes('thank') || message.includes('received') ||
-                        message.includes('processing') || message.includes('next') ||
-                        message.includes('continue')) {
-                        throw new Error("Program closed: System accepted numbers when it should reject them.");
-                    }
-                }
-
-                // Error Test 2: Send text (should be rejected)  
+                // Error Test 2: Send text (should be rejected)
                 console.log("⚠️ Error Test 2: Sending text...");
                 await sendMessageToBox(page, "Hello");
                 await page.waitForTimeout(10000);
 
                 const messages2 = await page.$$eval('[data-testid="msg-container"]', msgs =>
-                    msgs.slice(-2).map(msg => msg.textContent.toLowerCase())
+                    msgs.slice(-2).map(msg => msg.textContent)
                 );
-
-                for (const message of messages2) {
-                    if (message.includes('thank') || message.includes('received') ||
-                        message.includes('processing') || message.includes('next') ||
-                        message.includes('continue')) {
-                        throw new Error("Program closed: System accepted text when it should reject it.");
-                    }
-                }
+                checkForWrongAcceptance(messages2, "text");
 
                 // Error Test 3: Send emojis (should be rejected)
                 console.log("⚠️ Error Test 3: Sending emojis...");
@@ -751,24 +798,20 @@ test('Send user name with error sequence and validation', async () => {
                 await page.waitForTimeout(8000);
 
                 const messages3 = await page.$$eval('[data-testid="msg-container"]', msgs =>
-                    msgs.slice(-2).map(msg => msg.textContent.toLowerCase())
+                    msgs.slice(-2).map(msg => msg.textContent)
                 );
-
-                for (const message of messages3) {
-                    if (message.includes('thank') || message.includes('received') ||
-                        message.includes('processing') || message.includes('next') ||
-                        message.includes('continue')) {
-                        throw new Error("Program closed: System accepted emojis when it should reject them.");
-                    }
-                }
+                checkForWrongAcceptance(messages3, "emojis");
 
                 console.log("🎯 All invalid input tests completed successfully!");
                 await page.screenshot({ path: 'screenshots/after-invalid-input-tests.png', fullPage: true });
             });
 
+
             // Step 3: Upload blank receipt and wait for rejection
             await test.step('Upload blank receipt and capture rejection message', async () => {
                 console.log("📸 Uploading blank/blurry receipt...");
+
+
 
                 try {
                     await uploadReceipt(page, blankReceiptPath);
@@ -780,6 +823,12 @@ test('Send user name with error sequence and validation', async () => {
                     let acceptanceFound = false;
                     let attempts = 0;
                     const maxAttempts = 10;
+
+                    await page.waitForTimeout(10000);
+
+                    // Get patterns from config
+                    const rejectionPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptRejection;
+                    const acceptancePatterns = CAMPAIGN_CONFIG.expectedInstructions.submissionAccepted;
 
                     while (!rejectionFound && !acceptanceFound && attempts < maxAttempts) {
                         attempts++;
@@ -793,48 +842,44 @@ test('Send user name with error sequence and validation', async () => {
                             for (let element of selectableTexts) {
                                 const text = await element.textContent();
 
-                                // Check for REJECTION messages (CORRECT behavior)
-                                if (text && (
-                                    text.includes("Sorry, but we were unable to verify your receipt") ||
-                                    text.includes("unable to verify your receipt") ||
-                                    text.includes("could not verify") ||
-                                    text.includes("blurry") ||
-                                    text.includes("unclear") ||
-                                    text.includes("not clear") ||
-                                    text.toLowerCase().includes("manual review")
-                                )) {
-                                    console.log("✅ Found rejection message using selectable-text span!");
-                                    console.log(`📝 Full message: ${text}`);
-                                    rejectionFound = true;
-                                    await page.screenshot({
-                                        path: 'screenshots/blank-receipt-properly-rejected.png',
-                                        fullPage: true
-                                    });
-                                    break;
-                                }
+                                if (text) {
+                                    const lowerText = text.toLowerCase();
 
-                                // Check if system ACCEPTED instead (CRITICAL FAILURE)
-                                if (text && (
-                                    text.includes("Thank you for your submission") ||
-                                    text.includes("successfully received") ||
-                                    text.includes("validated") ||
-                                    text.includes("approved") ||
-                                    text.includes("received your details and will proceed") ||
-                                    text.includes("verification successful") ||
-                                    text.includes("receipt has been accepted")
-                                )) {
-                                    console.log("❌ CRITICAL FAILURE: System ACCEPTED blank/blurry receipt!");
-                                    console.log(`📝 Acceptance message: ${text}`);
-                                    acceptanceFound = true;
-                                    receiptValidationResults.blurryReceiptAccepted = true;
-                                    receiptValidationResults.passed = false;
-                                    receiptValidationResults.failures.push("System INCORRECTLY ACCEPTED blank/blurry receipt instead of rejecting it");
+                                    // Check for REJECTION messages (CORRECT behavior)
+                                    const isRejectionMessage = Array.isArray(rejectionPatterns)
+                                        ? rejectionPatterns.some(pattern => lowerText.includes(pattern.toLowerCase()))
+                                        : lowerText.includes(rejectionPatterns.toLowerCase());
 
-                                    await page.screenshot({
-                                        path: 'screenshots/FAILED-blank-receipt-incorrectly-accepted.png',
-                                        fullPage: true
-                                    });
-                                    break;
+                                    if (isRejectionMessage) {
+                                        console.log("✅ Found rejection message using selectable-text span!");
+                                        console.log(`📝 Full message: ${text}`);
+                                        rejectionFound = true;
+                                        await page.screenshot({
+                                            path: 'screenshots/blank-receipt-properly-rejected.png',
+                                            fullPage: true
+                                        });
+                                        break;
+                                    }
+
+                                    // Check if system ACCEPTED instead (CRITICAL FAILURE)
+                                    const isAcceptanceMessage = Array.isArray(acceptancePatterns)
+                                        ? acceptancePatterns.some(pattern => lowerText.includes(pattern.toLowerCase()))
+                                        : lowerText.includes(acceptancePatterns.toLowerCase());
+
+                                    if (isAcceptanceMessage) {
+                                        console.log("❌ CRITICAL FAILURE: System ACCEPTED blank/blurry receipt!");
+                                        console.log(`📝 Acceptance message: ${text}`);
+                                        acceptanceFound = true;
+                                        receiptValidationResults.blurryReceiptAccepted = true;
+                                        receiptValidationResults.passed = false;
+                                        receiptValidationResults.failures.push("System INCORRECTLY ACCEPTED blank/blurry receipt instead of rejecting it");
+
+                                        await page.screenshot({
+                                            path: 'screenshots/FAILED-blank-receipt-incorrectly-accepted.png',
+                                            fullPage: true
+                                        });
+                                        break;
+                                    }
                                 }
                             }
 
@@ -846,32 +891,33 @@ test('Send user name with error sequence and validation', async () => {
                             const recentMessages = await getRecentMessages(page, 5);
 
                             for (const message of recentMessages) {
-                                // Check for rejection
-                                if (message && (
-                                    message.includes("Sorry, but we were unable to verify your receipt") ||
-                                    message.includes("unable to verify your receipt") ||
-                                    message.includes("could not verify") ||
-                                    message.includes("blurry") ||
-                                    message.toLowerCase().includes("manual review")
-                                )) {
-                                    console.log("✅ Found rejection message in recent messages!");
-                                    rejectionFound = true;
-                                    break;
-                                }
+                                if (message) {
+                                    const lowerMessage = message.toLowerCase();
 
-                                // Check for acceptance (FAILURE)
-                                if (message && (
-                                    message.includes("Thank you for your submission") ||
-                                    message.includes("received your details and will proceed") ||
-                                    message.includes("successfully received") ||
-                                    message.includes("validated")
-                                )) {
-                                    console.log("❌ CRITICAL: System ACCEPTED blank receipt (found in recent messages)!");
-                                    acceptanceFound = true;
-                                    receiptValidationResults.blurryReceiptAccepted = true;
-                                    receiptValidationResults.passed = false;
-                                    receiptValidationResults.failures.push("System accepted blank/blurry receipt (detected in recent messages)");
-                                    break;
+                                    // Check for rejection
+                                    const isRejectionMessage = Array.isArray(rejectionPatterns)
+                                        ? rejectionPatterns.some(pattern => lowerMessage.includes(pattern.toLowerCase()))
+                                        : lowerMessage.includes(rejectionPatterns.toLowerCase());
+
+                                    if (isRejectionMessage) {
+                                        console.log("✅ Found rejection message in recent messages!");
+                                        rejectionFound = true;
+                                        break;
+                                    }
+
+                                    // Check for acceptance (FAILURE)
+                                    const isAcceptanceMessage = Array.isArray(acceptancePatterns)
+                                        ? acceptancePatterns.some(pattern => lowerMessage.includes(pattern.toLowerCase()))
+                                        : lowerMessage.includes(acceptancePatterns.toLowerCase());
+
+                                    if (isAcceptanceMessage) {
+                                        console.log("❌ CRITICAL: System ACCEPTED blank receipt (found in recent messages)!");
+                                        acceptanceFound = true;
+                                        receiptValidationResults.blurryReceiptAccepted = true;
+                                        receiptValidationResults.passed = false;
+                                        receiptValidationResults.failures.push("System accepted blank/blurry receipt (detected in recent messages)");
+                                        break;
+                                    }
                                 }
                             }
 
@@ -952,10 +998,15 @@ test('Send user name with error sequence and validation', async () => {
 
                 console.log("============= Waiting for NEW detailed instruction message (STRICT MODE) =============");
 
+                await page.waitForTimeout(10000);
+
                 let instructionFound = false;
                 let fullMessageCaptured = false;
                 let attempts = 0;
                 const maxAttempts = 10;
+
+                // ✅ Use config patterns for detection
+                const receiptUploadPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptUploadRequest;
 
                 while ((!instructionFound || !fullMessageCaptured) && attempts < maxAttempts) {
                     attempts++;
@@ -968,40 +1019,38 @@ test('Send user name with error sequence and validation', async () => {
                         for (let span of allSpans) {
                             const text = await span.textContent();
 
-                            if (text && (
-                                text.includes("Please submit your receipt as a proof of purchase") ||
-                                text.includes("receipt must contain the following information")
-                            )) {
-                                console.log("🔍 Found instruction message, verifying it's complete...");
+                            if (text) {
+                                const lowerText = text.toLowerCase();
+                                const matchedPatterns = receiptUploadPatterns.filter(pattern =>
+                                    lowerText.includes(pattern.toLowerCase())
+                                );
 
-                                const hasProofOfPurchase = text.includes("proof of purchase");
-                                const hasReceiptMustContain = text.includes("receipt must contain");
-                                const messageLength = text.length;
-                                console.log(`📏 Message length: ${messageLength} characters`);
+                                if (matchedPatterns.length > 0) {
+                                    console.log(`🔍 Found possible receipt upload instruction! Matched: ${JSON.stringify(matchedPatterns)}`);
+                                    const messageLength = text.length;
+                                    console.log(`📏 Message length: ${messageLength} characters`);
 
-                                if (hasProofOfPurchase && hasReceiptMustContain && messageLength > 100) {
-                                    console.log("✅ Message appears COMPLETE! Verifying stability...");
-                                    await page.waitForTimeout(2000);
+                                    if (messageLength > 100) {
+                                        console.log("✅ Message appears COMPLETE! Verifying stability...");
+                                        await page.waitForTimeout(2000);
 
-                                    const reconfirmText = await span.textContent();
-                                    if (reconfirmText === text && reconfirmText.length === messageLength) {
-                                        console.log("✅ NEW detailed instruction FULLY LOADED and STABLE in chat!");
-                                        console.log(`📝 Full message: ${text}`);
-                                        instructionFound = true;
-                                        fullMessageCaptured = true;
-                                        await page.screenshot({
-                                            path: 'screenshots/NEW-instruction-captured.png',
-                                            fullPage: true
-                                        });
-                                        break;
+                                        const reconfirmText = await span.textContent();
+                                        if (reconfirmText === text && reconfirmText.length === messageLength) {
+                                            console.log("✅ NEW detailed instruction FULLY LOADED and STABLE in chat!");
+                                            console.log(`📝 Full message: ${text}`);
+                                            instructionFound = true;
+                                            fullMessageCaptured = true;
+                                            await page.screenshot({
+                                                path: 'screenshots/NEW-instruction-captured.png',
+                                                fullPage: true
+                                            });
+                                            break;
+                                        } else {
+                                            console.log("⚠️ Message still loading, waiting longer...");
+                                        }
                                     } else {
-                                        console.log("⚠️ Message still loading, waiting longer...");
+                                        console.log("⚠️ Message found but seems incomplete (too short)");
                                     }
-                                } else {
-                                    console.log("⚠️ Message found but incomplete. Missing elements:");
-                                    console.log(`   - Proof of purchase: ${hasProofOfPurchase}`);
-                                    console.log(`   - Receipt must contain: ${hasReceiptMustContain}`);
-                                    console.log(`   - Length check (>100): ${messageLength > 100}`);
                                 }
                             }
                         }
@@ -1036,6 +1085,7 @@ test('Send user name with error sequence and validation', async () => {
 
                 console.log("📸 Starting valid receipt upload...");
 
+
                 try {
                     await uploadReceipt(page, receiptPath);
                     await page.waitForTimeout(15000);
@@ -1046,9 +1096,15 @@ test('Send user name with error sequence and validation', async () => {
 
                     console.log("📝 Recent messages after valid receipt upload:", recentMessages);
 
-                    if (recentText.includes('thank') || recentText.includes('received') ||
-                        recentText.includes('processing') || recentText.includes('success') ||
-                        recentText.includes('approved')) {
+
+
+                    // ✅ Use config patterns instead of hardcoded words
+                    const acceptancePatterns = CAMPAIGN_CONFIG.expectedInstructions.submissionAccepted;
+                    const isReceiptAccepted = Array.isArray(acceptancePatterns)
+                        ? acceptancePatterns.some(pattern => recentText.includes(pattern.toLowerCase()))
+                        : recentText.includes(acceptancePatterns.toLowerCase());
+
+                    if (isReceiptAccepted) {
                         console.log("✅ Valid receipt appears to have been accepted");
                     }
 
@@ -1060,6 +1116,7 @@ test('Send user name with error sequence and validation', async () => {
                     throw error;
                 }
             });
+
 
             // Step 7: Detect success validation message
             await test.step('Wait for validation success message', async () => {
@@ -1078,17 +1135,19 @@ test('Send user name with error sequence and validation', async () => {
                     attempts++;
                     console.log(`Attempt ${attempts}: Looking for success validation message...`);
 
+
+                    await page.waitForTimeout(15000);
+
                     try {
                         const selectableTexts = await page.$$('span._ao3e.selectable-text.copyable-text');
                         console.log(`Found ${selectableTexts.length} selectable text elements`);
 
+
+
                         for (let element of selectableTexts) {
                             const text = await element.textContent();
 
-                            if (text && (
-                                (text.includes("Thank you for your submission") && text.includes("received your details")) ||
-                                (text.includes("Thank you for your submission") && text.includes("proceed with validation"))
-                            )) {
+                            if (text && CAMPAIGN_CONFIG.expectedInstructions.submissionAccepted.some(msg => text.includes(msg))) {
                                 console.log("✅ Found validation success message!");
                                 console.log(`📝 Full message: ${text}`);
                                 successFound = true;
@@ -1163,35 +1222,58 @@ test('Send user name with error sequence and validation', async () => {
 
                 console.log("============= Waiting for instruction message after Submit New Receipt =============");
 
+                await page.waitForTimeout(8000);
+
                 let instructionFound = false;
+                let fullMessageCaptured = false;
                 let attempts = 0;
                 const maxAttempts = 10;
 
-                while (!instructionFound && attempts < maxAttempts) {
+                // ✅ Use config patterns for detection
+                const receiptUploadPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptUploadRequest;
+
+                while ((!instructionFound || !fullMessageCaptured) && attempts < maxAttempts) {
                     attempts++;
-                    console.log(`Attempt ${attempts}: Looking for COMPLETE instruction message...`);
+                    console.log(`Attempt ${attempts}: Looking for COMPLETE NEW instruction message...`);
 
                     try {
-                        const allSpans = await page.$$('span._ao3e.selectable-text.copyable-text');
+                        const allSpans = await page.$$('span._ao3e.selectable-text.copyable-text, span.x1lliihq, span.selectable-text');
                         console.log(`Found ${allSpans.length} text elements to check`);
 
                         for (let span of allSpans) {
                             const text = await span.textContent();
 
-                            if (text && text.includes("Please submit your receipt as a proof of purchase")) {
-                                console.log("🔍 Found instruction message, verifying completeness...");
-                                const messageLength = text.length;
-                                console.log(`📏 Message length: ${messageLength} characters`);
+                            if (text) {
+                                const lowerText = text.toLowerCase();
+                                const matchedPatterns = receiptUploadPatterns.filter(pattern =>
+                                    lowerText.includes(pattern.toLowerCase())
+                                );
 
-                                if (messageLength > 100) {
-                                    await page.waitForTimeout(2000);
-                                    const reconfirmText = await span.textContent();
+                                if (matchedPatterns.length > 0) {
+                                    console.log(`🔍 Found possible receipt upload instruction! Matched: ${JSON.stringify(matchedPatterns)}`);
+                                    const messageLength = text.length;
+                                    console.log(`📏 Message length: ${messageLength} characters`);
 
-                                    if (reconfirmText === text) {
-                                        console.log("✅ Instruction FULLY LOADED and STABLE!");
-                                        console.log(`📝 Full message: ${text}`);
-                                        instructionFound = true;
-                                        break;
+                                    if (messageLength > 100) {
+                                        console.log("✅ Message appears COMPLETE! Verifying stability...");
+                                        await page.waitForTimeout(2000);
+
+                                        const reconfirmText = await span.textContent();
+                                        if (reconfirmText === text && reconfirmText.length === messageLength) {
+                                            console.log("✅ NEW detailed instruction FULLY LOADED and STABLE in chat!");
+                                            console.log(`📝 Full message: ${text}`);
+                                            instructionFound = true;
+                                            fullMessageCaptured = true;
+                                            await page.screenshot({
+                                                path: 'screenshots/NEW-instruction-captured.png',
+                                                fullPage: true
+                                            });
+                                            break;
+                                        } else {
+                                            console.log("⚠️ Message still loading, waiting longer...");
+                                        }
+                                    } else {
+                                        console.log("⚠️ Message found but seems incomplete (too short)");
                                     }
                                 }
                             }
@@ -1201,9 +1283,10 @@ test('Send user name with error sequence and validation', async () => {
                         console.log(`⚠️ Error during instruction check: ${error.message}`);
                     }
 
-                    if (instructionFound) {
+                    if (instructionFound && fullMessageCaptured) {
                         break;
                     }
+
 
                     console.log(`❌ Instruction not found yet. Waiting 3 seconds... (${attempts}/${maxAttempts})`);
                     await page.waitForTimeout(3000);
@@ -1236,24 +1319,33 @@ test('Send user name with error sequence and validation', async () => {
 
                     while (!rejectionFound && attempts < maxAttempts) {
                         attempts++;
+
+                        await page.waitForTimeout(15000);
+
                         console.log(`Attempt ${attempts}: Checking for rejection instruction message...`);
 
                         try {
                             const selectableTexts = await page.$$('span._ao3e.selectable-text.copyable-text');
                             console.log(`Found ${selectableTexts.length} selectable text elements`);
 
+                            const receiptUploadPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptRejection;
+
                             for (let element of selectableTexts) {
                                 const text = await element.textContent();
 
-                                if (text && (
-                                    text.includes("Please submit your receipt as a proof of purchase") ||
-                                    (text.includes("Store Name") && text.includes("Receipt Date") && text.includes("Product Name"))
-                                )) {
-                                    console.log("✅ Found receipt instruction message for second blank receipt!");
-                                    console.log(`📝 Full message: ${text}`);
-                                    rejectionFound = true;
-                                    await page.screenshot({ path: 'screenshots/second-blank-receipt-rejected.png', fullPage: true });
-                                    break;
+                                if (text) {
+                                    const lowerText = text.toLowerCase();
+                                    const matchedPatterns = receiptUploadPatterns.filter(pattern =>
+                                        lowerText.includes(pattern.toLowerCase())
+                                    );
+
+                                    if (matchedPatterns.length > 0) {
+                                        console.log(`✅ Found receipt instruction message for second blank receipt! Matched: ${JSON.stringify(matchedPatterns)}`);
+                                        console.log(`📝 Full message: ${text}`);
+                                        rejectionFound = true;
+                                        await page.screenshot({ path: 'screenshots/second-blank-receipt-rejected.png', fullPage: true });
+                                        break;
+                                    }
                                 }
                             }
 
@@ -1264,7 +1356,6 @@ test('Send user name with error sequence and validation', async () => {
                         if (rejectionFound) {
                             break;
                         }
-
                         console.log(`❌ Rejection message not found yet. Waiting 3 seconds... (${attempts}/${maxAttempts})`);
                         await page.waitForTimeout(3000);
                     }
@@ -1378,6 +1469,7 @@ test('Send user name with error sequence and validation', async () => {
     //=================================== Test 5 Chat with Agent ===========================================================================
 
 
+
     // Test 5: Chat with Agent functionality
     test('Chat with Agent functionality', async () => {
         test.setTimeout(300000); // 5 minutes
@@ -1421,6 +1513,7 @@ test('Send user name with error sequence and validation', async () => {
         }
     });
 });
+
 
 
 
