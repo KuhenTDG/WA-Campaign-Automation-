@@ -1,14 +1,14 @@
 
-
+ 
 const CAMPAIGN_CONFIG = {
     // Contact details
-    contactName: "Whatsapp Automation",   //+60 16-410 5382 (to test blurry receipt) || Whatsapp Automation
+    contactName: "+60 16-410 5382",   //+60 16-410 5382 (to test blurry receipt) || Whatsapp Automation
 
     // Campaign trigger Message 
-    triggerMessage: "kuhentest", // Hi, I want to join Haleon SG Oral Month Campaign. || kuhentest
-
+    triggerMessage: "Hi, I want to join Haleon SG Oral Month Campaign.", // Hi, I want to join Haleon SG Oral Month Campaign. || kuhentest
+ 
     // Campaign identification
-    exactCampaignName: "Fluimucil Buy and Redeem Campaign!!​",  // Haleon SG Oral Month Campaign! || Fluimucil Buy and Redeem Campaign!!
+    exactCampaignName: "Haleon SG Oral Month Campaign!​",  // Haleon SG Oral Month Campaign! || Fluimucil Buy and Redeem Campaign!!
 
     expectedInstructions: {
         nameRequest: [
