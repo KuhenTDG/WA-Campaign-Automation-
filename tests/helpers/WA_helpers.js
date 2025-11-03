@@ -38,14 +38,22 @@ async function sendMessageToBox(page, message) {
 }
 
 // Receipt upload function
+// TODO: MAJOR REFACTOR NEEDED - This function has several critical issues:
+// 1. Brittle XPath selectors that will break easily
+// 2. Manual intervention fallback that defeats automation purpose
+// 3. Missing modal state validation
+// 4. Poor error handling and recovery
+// 5. No retry mechanisms for flaky UI interactions
 async function uploadReceipt(page, receiptPath) {
   console.log("📸 Uploading receipt image...");
 
   try {
+    // TODO: IMPROVEMENT - Add retry logic for attach button click
     // Click the Attach button
     await page.getByRole('button', { name: /attach/i }).click();
     await page.waitForTimeout(1000);
 
+    // TODO: IMPROVEMENT - Add fallback selectors for file input
     // Find the file input
     const fileInput = await page.$('input[type="file"][accept*="image"]');
     if (!fileInput) {
@@ -57,9 +65,14 @@ async function uploadReceipt(page, receiptPath) {
     const absolutePath = path.resolve(__dirname, '..', receiptPath);
     await fileInput.setInputFiles(absolutePath);
 
+    // TODO: CRITICAL - Replace this brittle XPath selector!
+    // ISSUE: This XPath is extremely fragile and will break when WhatsApp updates their DOM
+    // RECOMMENDED: Use multiple fallback selectors like '[role="dialog"]', '[data-testid="media-viewer"]'
     // Wait for image preview dialog to appear
     await page.waitForSelector('xpath=//*[@id="app"]/div[1]/div/div[3]/div/div[2]/div[2]/div/span/div/div/div/div[2]/div/div[2]/div[2]/div/div', { timeout: 30000 });
 
+    // TODO: CRITICAL - Add retry logic and better selector fallbacks
+    // ISSUE: Single selector approach is fragile
     // Wait for the send button to be enabled
     const sendButton = page.locator('div[role="button"][aria-label="Send"]:not([aria-disabled="true"])');
     await sendButton.waitFor({ state: 'visible', timeout: 60000 });
@@ -70,7 +83,10 @@ async function uploadReceipt(page, receiptPath) {
       await sendButton.click({ force: true });
       console.log("📸 Receipt image sent automatically success!");
     } catch (autoClickErr) {
-      // ===== TEMPORARY MANUAL STEP =====
+      // TODO: URGENT - REMOVE MANUAL INTERVENTION!
+      // ISSUE: This breaks automation and makes tests unreliable
+      // REQUIRED: Implement proper retry logic with multiple selectors instead
+      // ===== TEMPORARY MANUAL STEP - MUST BE REMOVED =====
       console.log("⚠️ Automatic send button click failed. Please click the Send button manually in the browser.");
       // Wait up to 30 seconds for you to click manually
       await page.waitForTimeout(30000);
@@ -79,6 +95,10 @@ async function uploadReceipt(page, receiptPath) {
 
     return true;
   } catch (error) {
+    // TODO: CRITICAL - Improve error handling with modal-specific context
+    // MISSING: Screenshot capture for modal-related errors
+    // MISSING: Specific error types for different failure modes
+    // MISSING: Modal state cleanup on errors
     console.error("❌ Receipt upload failed:", error.message);
     throw error;
   }

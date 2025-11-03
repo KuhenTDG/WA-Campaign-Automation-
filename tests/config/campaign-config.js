@@ -71,10 +71,13 @@ const CAMPAIGN_CONFIG = {
 
 
     // Timeout settings (optional - can be overridden per campaign)
+    // TODO: IMPROVEMENT - Add modal-specific timeout configurations
+    // MISSING: Modal open/close timeouts, retry intervals, selector timeouts
     timeouts: {
         messageWait: 8000,      // Wait time after sending messages
         buttonClick: 5000,      // Wait time after clicking buttons
         receiptUpload: 15000    // Wait time after uploading receipt
+        // TODO: ADD - modalOpen: 30000, modalClose: 10000, selectorRetry: 5000
     }
 
 };
