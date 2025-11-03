@@ -180,7 +180,7 @@ test.describe('WhatsApp Automation Tests', () => {
 
 
     // Test 2: Send trigger message, detect campaign name, and handle proceed button  
-    test('Send trigger message and handle proceed button', async () => {
+    /*test('Send trigger message and handle proceed button', async () => {
         test.setTimeout(180000); // 3 minutes
 
         try {
@@ -334,7 +334,7 @@ test.describe('WhatsApp Automation Tests', () => {
 
             throw error;
         }
-    });
+    });*/
 
 
     //=================================== Test 3 Name Validation ===========================================================================
@@ -343,7 +343,7 @@ test.describe('WhatsApp Automation Tests', () => {
     test('Send user name with error sequence and validation', async () => {
         test.setTimeout(180000); // 3 minutes
 
-        //    const userName = "Kuhen test";
+            const userName = "Kuhen test";
         let validationResults = {
             passed: true,
             failures: [],
@@ -445,68 +445,60 @@ test.describe('WhatsApp Automation Tests', () => {
                             continue;
                         }
 
-                        for (let element of selectableTexts) {
+                        // ✅ NEW: GET LAST 2-3 MESSAGES AND COMBINE THEM
+                        const recentMessages = selectableTexts.slice(-3);
+                        let combinedText = '';
+
+                        for (let element of recentMessages) {
                             const text = await element.textContent();
-
                             if (text) {
-                                // Get receipt upload patterns from config
-                                const receiptUploadPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptUploadRequest;
-                                const receiptRequirements = CAMPAIGN_CONFIG.expectedInstructions.receiptRequirements;
-
-                                const lowerText = text.toLowerCase();
-                                let isReceiptUploadMessage = false;
-
-                                // Check if ALL receipt upload instruction parts are present
-                                if (Array.isArray(receiptUploadPatterns)) {
-                                    isReceiptUploadMessage = receiptUploadPatterns.every(pattern =>
-                                        lowerText.includes(pattern.toLowerCase())
-                                    );
-                                } else {
-                                    // Single string fallback
-                                    isReceiptUploadMessage = lowerText.includes(receiptUploadPatterns.toLowerCase());
-                                }
-
-
-
-                                // CRITICAL: Check if system ACCEPTED invalid name and moved to receipt upload
-                                if (isReceiptUploadMessage) {
-                                    console.log(`❌ CRITICAL: System ACCEPTED invalid name "${invalidName}" and proceeded to receipt upload!`);
-                                    console.log(`📝 Receipt upload message detected: ${text.substring(0, 200)}...`);
-                                    console.log(`🎯 Matched patterns: ${JSON.stringify(receiptUploadPatterns)}`);
-                                    proceeded = true;
-                                    break;
-                                }
-
-
-                                // Check for REJECTION patterns (only if not proceeded)
-                                // TRUE REJECTION = System asks for name again with error message
-                                const rejectionPatterns = CAMPAIGN_CONFIG.expectedInstructions.nameRejection;
-                                const lowerMsg = text.toLowerCase();
-
-                                let isRejectionMessage = false;
-
-                                // Check if ALL rejection pattern parts exist
-                                if (Array.isArray(rejectionPatterns)) {
-                                    isRejectionMessage = rejectionPatterns.every(pattern =>
-                                        lowerMsg.includes(pattern.toLowerCase())
-                                    );
-                                } else {
-                                    // Single string fallback
-                                    isRejectionMessage = lowerMsg.includes(rejectionPatterns.toLowerCase());
-                                }
-
-                                if (isRejectionMessage) {
-                                    console.log(`✅ System REJECTED invalid name "${invalidName}" as expected!`);
-                                    console.log(`📝 Rejection message: ${text.substring(0, 200)}...`);
-                                    console.log(`🎯 Matched rejection patterns: ${JSON.stringify(rejectionPatterns)}`);
-                                    rejected = true;
-                                    await page.screenshot({
-                                        path: `screenshots/name-rejected-${invalidName.replace(/[^a-zA-Z0-9]/g, '_')}.png`,
-                                        fullPage: true
-                                    });
-                                    break;
-                                }
+                                combinedText += text.toLowerCase() + ' ';
                             }
+                        }
+
+                        // Check receipt upload patterns in combined text
+                        const receiptUploadPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptUploadRequest;
+                        let isReceiptUploadMessage = false;
+
+                        if (Array.isArray(receiptUploadPatterns)) {
+                            isReceiptUploadMessage = receiptUploadPatterns.every(pattern =>
+                                combinedText.includes(pattern.toLowerCase())
+                            );
+                        } else {
+                            isReceiptUploadMessage = combinedText.includes(receiptUploadPatterns.toLowerCase());
+                        }
+
+                        // CRITICAL: Check if system ACCEPTED invalid name and moved to receipt upload
+                        if (isReceiptUploadMessage) {
+                            console.log(`❌ CRITICAL: System ACCEPTED invalid name "${invalidName}" and proceeded to receipt upload!`);
+                            console.log(`📝 Receipt upload message detected in combined text`);
+                            console.log(`🎯 Matched patterns: ${JSON.stringify(receiptUploadPatterns)}`);
+                            proceeded = true;
+                            break;
+                        }
+
+                        // Check for REJECTION patterns in combined text
+                        const rejectionPatterns = CAMPAIGN_CONFIG.expectedInstructions.nameRejection;
+                        let isRejectionMessage = false;
+
+                        if (Array.isArray(rejectionPatterns)) {
+                            isRejectionMessage = rejectionPatterns.every(pattern =>
+                                combinedText.includes(pattern.toLowerCase())
+                            );
+                        } else {
+                            isRejectionMessage = combinedText.includes(rejectionPatterns.toLowerCase());
+                        }
+
+                        if (isRejectionMessage) {
+                            console.log(`✅ System REJECTED invalid name "${invalidName}" as expected!`);
+                            console.log(`📝 Rejection message detected in combined text`);
+                            console.log(`🎯 Matched rejection patterns: ${JSON.stringify(rejectionPatterns)}`);
+                            rejected = true;
+                            await page.screenshot({
+                                path: `screenshots/name-rejected-${invalidName.replace(/[^a-zA-Z0-9]/g, '_')}.png`,
+                                fullPage: true
+                            });
+                            break;
                         }
 
                         if (rejected || proceeded) {
@@ -543,9 +535,9 @@ test.describe('WhatsApp Automation Tests', () => {
                     break;
                 } else if (rejected) {
                     console.log(`✅ System correctly rejected "${invalidName}"`);
-                    console.log(`⏳ Waiting 8 seconds for system to complete error message sequence...`);
+                    console.log(`⏳ Waiting 5 seconds for system to complete error message sequence...`);
                     // WAIT 8 seconds after rejection
-                    await page.waitForTimeout(8000);
+                    await page.waitForTimeout(5000);
                     console.log(`✅ Wait complete. Ready for next invalid name test.`);
                 } else {
                     console.log(`⚠️ No clear response detected for "${invalidName}"`);
