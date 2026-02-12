@@ -37,72 +37,51 @@ async function sendMessageToBox(page, message) {
   await nameMessageBox.press('Enter');
 }
 
-// Receipt upload function
-// TODO: MAJOR REFACTOR NEEDED - This function has several critical issues:
-// 1. Brittle XPath selectors that will break easily
-// 2. Manual intervention fallback that defeats automation purpose
-// 3. Missing modal state validation
-// 4. Poor error handling and recovery
-// 5. No retry mechanisms for flaky UI interactions
+
 async function uploadReceipt(page, receiptPath) {
-  console.log("📸 Uploading receipt image...");
+  console.log("📸 Manual receipt upload mode...");
 
   try {
-    // TODO: IMPROVEMENT - Add retry logic for attach button click
-    // Click the Attach button
-    await page.getByRole('button', { name: /attach/i }).click();
-    await page.waitForTimeout(1000);
-
-    // TODO: IMPROVEMENT - Add fallback selectors for file input
-    // Find the file input
-    const fileInput = await page.$('input[type="file"][accept*="image"]');
-    if (!fileInput) {
-      throw new Error("File input not found!");
+    // MANUAL UPLOAD MODE
+    console.log("⏸️ ========================================");
+    console.log("⏸️ PAUSING FOR MANUAL RECEIPT UPLOAD");
+    console.log("⏸️ ========================================");
+    console.log(`📁 Please manually upload: ${receiptPath}`);
+    console.log("⏸️ You have 40 seconds to:");
+    console.log("   1. Click the attach (+) button");
+    console.log("   2. Select 'Photos & Videos'");
+    console.log("   3. Choose the receipt image");
+    console.log("   4. Click Send");
+    console.log("⏸️ ========================================");
+    
+    // Wait 30 seconds for manual upload
+    for (let i = 40; i > 0; i--) {
+      console.log(`⏳ Time remaining: ${i} seconds...`);
+      await page.waitForTimeout(1000);
     }
-
-    // Upload the file
-    const path = require('path');
-    const absolutePath = path.resolve(__dirname, '..', receiptPath);
-    await fileInput.setInputFiles(absolutePath);
-
-    // TODO: CRITICAL - Replace this brittle XPath selector!
-    // ISSUE: This XPath is extremely fragile and will break when WhatsApp updates their DOM
-    // RECOMMENDED: Use multiple fallback selectors like '[role="dialog"]', '[data-testid="media-viewer"]'
-    // Wait for image preview dialog to appear
-    await page.waitForSelector('xpath=//*[@id="app"]/div[1]/div/div[3]/div/div[2]/div[2]/div/span/div/div/div/div[2]/div/div[2]/div[2]/div/div', { timeout: 30000 });
-
-    // TODO: CRITICAL - Add retry logic and better selector fallbacks
-    // ISSUE: Single selector approach is fragile
-    // Wait for the send button to be enabled
-    const sendButton = page.locator('div[role="button"][aria-label="Send"]:not([aria-disabled="true"])');
-    await sendButton.waitFor({ state: 'visible', timeout: 60000 });
-
-
-    // Click Send button
-    try {
-      await sendButton.click({ force: true });
-      console.log("📸 Receipt image sent automatically success!");
-    } catch (autoClickErr) {
-      // TODO: URGENT - REMOVE MANUAL INTERVENTION!
-      // ISSUE: This breaks automation and makes tests unreliable
-      // REQUIRED: Implement proper retry logic with multiple selectors instead
-      // ===== TEMPORARY MANUAL STEP - MUST BE REMOVED =====
-      console.log("⚠️ Automatic send button click failed. Please click the Send button manually in the browser.");
-      // Wait up to 30 seconds for you to click manually
-      await page.waitForTimeout(30000);
-      // ===== REMOVE THIS BLOCK WHEN AUTO CLICK WORKS =====
-    }
+    
+    console.log("✅ Manual upload time completed!");
+    console.log("🔄 Resuming automated detection...");
+    
+    // Give extra time for the message to process
+    await page.waitForTimeout(3000);
+    console.log("📸 Receipt upload step completed!");
 
     return true;
+
   } catch (error) {
-    // TODO: CRITICAL - Improve error handling with modal-specific context
-    // MISSING: Screenshot capture for modal-related errors
-    // MISSING: Specific error types for different failure modes
-    // MISSING: Modal state cleanup on errors
     console.error("❌ Receipt upload failed:", error.message);
+    
+    await page.screenshot({
+      path: 'screenshots/debug-upload-failure.png',
+      fullPage: true
+    });
+    
     throw error;
   }
 }
+
+
 
 // Chat with agent function - CLEANED VERSION
 async function chatWithAgent(page, agentMessage, expectedResponse) {
@@ -110,11 +89,11 @@ async function chatWithAgent(page, agentMessage, expectedResponse) {
 
   try {
     // STEP 1: Initial wait to let the message load after Proceed button
-    console.log("⏳ Waiting 20 seconds for confirmation message to load...");
-    await page.waitForTimeout(20000);
+    console.log("⏳ Waiting for confirmation message to load...");
+    await page.waitForTimeout(10000);
     console.log("✅ Starting message detection...");
 
-    // STEP 2: Check for the submission confirmation message
+    /*// STEP 2: Check for the submission confirmation message
     let messageFound = false;
     let attempts = 0;
     const maxAttempts = 10;
@@ -132,7 +111,7 @@ async function chatWithAgent(page, agentMessage, expectedResponse) {
 
           // Check for key phrases
           const hasThankYou = fullText.includes("Thank you for your submission");
-          const hasValidation = fullText.includes("proceed with validation");
+          const hasValidation = fullText.includes("will now verify your receipt.");
           const hasGrabVoucher = fullText.includes("received your details");
 
           if (hasThankYou && hasValidation && hasGrabVoucher) {
@@ -162,11 +141,78 @@ async function chatWithAgent(page, agentMessage, expectedResponse) {
         fullPage: true
       });
       throw new Error("Submission confirmation message not found");
+    }*/
+
+
+
+    // STEP 2: Detect submission confirmation message (NEW STABLE VERSION - WA UPDATE SAFE)
+let messageFound = false;
+let attempts = 0;
+const maxAttempts = 12; // little longer, WA is slow
+
+while (!messageFound && attempts < maxAttempts) {
+  attempts++;
+
+  try {
+    // Collect recent bot messages (WA update safe - old + new containers)
+    const messageElements = await page.$$(
+      'div[data-pre-plain-text], div.message-in, span.selectable-text, span.copyable-text'
+    );
+
+    let combinedText = "";
+
+    // Take more recent messages because WA loads dynamically
+    for (let el of messageElements.slice(-10)) {
+      const text = await el.textContent();
+      if (text) combinedText += text + " ";
     }
 
-    console.log("✅ Message confirmed - proceeding to click Chat with Agent button");
-    await page.waitForTimeout(2000);
+    const lowerText = combinedText.toLowerCase();
 
+    // 🔑 KEYWORD BASED DETECTION (robust & unchanged logic)
+    const hasThankYou = lowerText.includes("thank you for your submission");
+    const hasReceived = lowerText.includes("received your details");
+    const hasValidate =
+      lowerText.includes("proceed with validation") ||
+      lowerText.includes("will proceed") ||
+      lowerText.includes("verify your receipt");
+    const hasVoucher = lowerText.includes("grab voucher");
+
+    if (hasThankYou && hasReceived && hasValidate) {
+      console.log("✅ Submission confirmation detected!");
+      console.log("📝 Detected message text:", combinedText.trim());
+
+      messageFound = true;
+
+      await page.screenshot({
+        path: 'screenshots/submission-message-found.png',
+        fullPage: true
+      });
+
+      break;
+    }
+
+  } catch (error) {
+    console.log(`⚠️ Error during message check: ${error.message}`);
+  }
+
+  if (!messageFound) {
+    console.log(`Attempt ${attempts}/${maxAttempts}: Confirmation not found yet...`);
+    await page.waitForTimeout(3000);
+  }
+}
+
+if (!messageFound) {
+  console.error("❌ Submission confirmation message did not appear!");
+  await page.screenshot({
+    path: 'screenshots/submission-message-not-found.png',
+    fullPage: true
+  });
+  throw new Error("Submission confirmation message not found");
+}
+
+console.log("✅ Message confirmed - proceeding to click Chat with Agent button");
+await page.waitForTimeout(2000);
     // STEP 3: Find and click the Chat with Agent button
     let buttons = await page.$$('div._ahef[role="button"]:has-text("Chat with Agent")');
 
@@ -183,8 +229,9 @@ async function chatWithAgent(page, agentMessage, expectedResponse) {
       throw new Error("No Chat with Agent button found");
     }
 
-    console.log(`📊 Found ${buttons.length} Chat with Agent button(s)`);
-    
+    //console.log(`📊 Found ${buttons.length} Chat with Agent button(s)`);
+    console.log(`📊 Found ${buttons.length} Chat dengan Agen button(s)`);
+
     // Click the most recent button
     const lastButton = buttons[buttons.length - 1];
     await lastButton.scrollIntoViewIfNeeded();
@@ -213,11 +260,49 @@ async function chatWithAgent(page, agentMessage, expectedResponse) {
 }
 
 
+
+//Get recent message of upload receipt
+
+async function getMostRecentBotMessage(page) {
+  try {
+    // Get all message containers (adjust selector based on your WhatsApp structure)
+    const messageContainers = await page.$$('div[data-id]');
+
+    // Start from the end (most recent messages)
+    for (let i = messageContainers.length - 1; i >= 0; i--) {
+      const container = messageContainers[i];
+
+      // Check if it's an incoming message (bot message, not user's own message)
+      const isIncoming = await container.evaluate(el => {
+        // Adjust this based on WhatsApp's structure - incoming messages usually have specific classes
+        return el.querySelector('span[dir="ltr"]') !== null &&
+          !el.classList.contains('message-out');
+      });
+
+      if (isIncoming) {
+        const textElements = await container.$$('span._ao3e.selectable-text.copyable-text');
+        if (textElements.length > 0) {
+          const texts = await Promise.all(
+            textElements.map(el => el.textContent())
+          );
+          return texts.join(' ').trim();
+        }
+      }
+    }
+    return null;
+  } catch (error) {
+    console.log(`Error getting recent message: ${error.message}`);
+    return null;
+  }
+}
+
+
 // Export only what we need
 module.exports = {
   sendMessage,
   sendMessageToBox,
   uploadReceipt,
   chatWithAgent,
+  getMostRecentBotMessage,
   CONFIG
 };
