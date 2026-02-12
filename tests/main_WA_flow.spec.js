@@ -1,10 +1,21 @@
 
 const { test, expect, chromium } = require('@playwright/test');
-const { sendMessage, sendMessageToBox, uploadReceipt, chatWithAgent, CONFIG } = require('./helpers/WA_helpers');
+const { sendMessage, sendMessageToBox, uploadReceipt, chatWithAgent, getMostRecentBotMessage, CONFIG} = require('./helpers/WA_helpers');
 
 // Import campaign configuration
-const CAMPAIGN_CONFIG = require('./config/campaign-config');    //+60 11-2635 2586 (to test blurry receipt) || Whatsapp Automation
+const CAMPAIGN_CONFIG = require('./config/campaign-config');   
 
+// import the separate test files
+const { testSearchContact } = require('./test-cases/search-contact.spec.js');
+
+let receiptValidationResults = {
+    passed: true,
+    failures: [],
+    blurryReceiptAccepted: false,
+    validReceiptRejected: false,  
+    secondBlurryReceiptAccepted: false,  
+    criticalFailure: false
+};
 
 test.describe('WhatsApp Automation Tests', () => {
     let browser, context, page;
@@ -58,10 +69,18 @@ test.describe('WhatsApp Automation Tests', () => {
     });
 
 
+     // Call your test function here:
+    test('Search contact test', async () => {
+        await testSearchContact(page, CAMPAIGN_CONFIG);
+    });
+
+});
+
+
     //=================================== Test 1 Search and Open Contact =========================================
 
     // Test 1: Search and open contact
-    test('Search and open contact by name or phone number', async () => {
+   /* test('Search and open contact by name or phone number', async () => {
         test.setTimeout(180000); // 3 minutes
 
         try {
@@ -173,14 +192,14 @@ test.describe('WhatsApp Automation Tests', () => {
             });
             throw error;
         }
-    });
+    });*/
 
     //=================================== Test 2 Send trigger message ===========================================================================
 
 
 
     // Test 2: Send trigger message, detect campaign name, and handle proceed button  
-    /*test('Send trigger message and handle proceed button', async () => {
+    test('Send trigger message and handle proceed button', async () => {
         test.setTimeout(180000); // 3 minutes
 
         try {
@@ -334,7 +353,8 @@ test.describe('WhatsApp Automation Tests', () => {
 
             throw error;
         }
-    });*/
+    });
+
 
 
     //=================================== Test 3 Name Validation ===========================================================================
@@ -343,7 +363,7 @@ test.describe('WhatsApp Automation Tests', () => {
     test('Send user name with error sequence and validation', async () => {
         test.setTimeout(180000); // 3 minutes
 
-            const userName = "Kuhen test";
+        const userName = "Kuhen test";
         let validationResults = {
             passed: true,
             failures: [],
@@ -666,11 +686,7 @@ test.describe('WhatsApp Automation Tests', () => {
         const receiptPath = "demo-receipt.jpg"; // Valid receipt
         const blankReceiptPath = "blank-receipt.jpg"; // Blank/blurry receipt
 
-        let receiptValidationResults = {
-            passed: true,
-            failures: [],
-            blurryReceiptAccepted: false
-        };
+       
 
         // Helper function to get recent messages
         async function getRecentMessages(page, count = 3) {
@@ -799,117 +815,72 @@ test.describe('WhatsApp Automation Tests', () => {
             });
 
 
-            // Step 3: Upload blank receipt and wait for rejection
+            // STEP 3: Upload blank receipt
+            // ===========================================
             await test.step('Upload blank receipt and capture rejection message', async () => {
                 console.log("📸 Uploading blank/blurry receipt...");
-
-
 
                 try {
                     await uploadReceipt(page, blankReceiptPath);
                     console.log("⏳ Waiting for system response...");
                     await page.waitForTimeout(15000);
-                    console.log("🔍 Looking for rejection message in recent chat...");
 
                     let rejectionFound = false;
                     let acceptanceFound = false;
                     let attempts = 0;
                     const maxAttempts = 10;
 
-                    await page.waitForTimeout(10000);
-
-                    // Get patterns from config
                     const rejectionPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptRejection;
                     const acceptancePatterns = CAMPAIGN_CONFIG.expectedInstructions.submissionAccepted;
 
                     while (!rejectionFound && !acceptanceFound && attempts < maxAttempts) {
                         attempts++;
-                        console.log(`Attempt ${attempts}: Checking for system response...`);
+                        console.log(`Attempt ${attempts}: Checking MOST RECENT message...`);
+
+                        await page.waitForTimeout(3000);
 
                         try {
-                            // Check using selectable-text spans (THIS IS THE ONE THAT WORKS)
-                            const selectableTexts = await page.$$('span._ao3e.selectable-text.copyable-text');
-                            console.log(`Found ${selectableTexts.length} selectable text elements`);
+                            // Get only the most recent bot message
+                            const recentMessage = await getMostRecentBotMessage(page);
 
-                            for (let element of selectableTexts) {
-                                const text = await element.textContent();
+                            if (recentMessage) {
+                                console.log(`📩 Most recent bot message: "${recentMessage.substring(0, 100)}..."`);
+                                const lowerText = recentMessage.toLowerCase();
 
-                                if (text) {
-                                    const lowerText = text.toLowerCase();
+                                // Check for REJECTION (CORRECT behavior)
+                                const isRejectionMessage = Array.isArray(rejectionPatterns)
+                                    ? rejectionPatterns.some(pattern => lowerText.includes(pattern.toLowerCase()))
+                                    : lowerText.includes(rejectionPatterns.toLowerCase());
 
-                                    // Check for REJECTION messages (CORRECT behavior)
-                                    const isRejectionMessage = Array.isArray(rejectionPatterns)
-                                        ? rejectionPatterns.some(pattern => lowerText.includes(pattern.toLowerCase()))
-                                        : lowerText.includes(rejectionPatterns.toLowerCase());
-
-                                    if (isRejectionMessage) {
-                                        console.log("✅ Found rejection message using selectable-text span!");
-                                        console.log(`📝 Full message: ${text}`);
-                                        rejectionFound = true;
-                                        await page.screenshot({
-                                            path: 'screenshots/blank-receipt-properly-rejected.png',
-                                            fullPage: true
-                                        });
-                                        break;
-                                    }
-
-                                    // Check if system ACCEPTED instead (CRITICAL FAILURE)
-                                    const isAcceptanceMessage = Array.isArray(acceptancePatterns)
-                                        ? acceptancePatterns.some(pattern => lowerText.includes(pattern.toLowerCase()))
-                                        : lowerText.includes(acceptancePatterns.toLowerCase());
-
-                                    if (isAcceptanceMessage) {
-                                        console.log("❌ CRITICAL FAILURE: System ACCEPTED blank/blurry receipt!");
-                                        console.log(`📝 Acceptance message: ${text}`);
-                                        acceptanceFound = true;
-                                        receiptValidationResults.blurryReceiptAccepted = true;
-                                        receiptValidationResults.passed = false;
-                                        receiptValidationResults.failures.push("System INCORRECTLY ACCEPTED blank/blurry receipt instead of rejecting it");
-
-                                        await page.screenshot({
-                                            path: 'screenshots/FAILED-blank-receipt-incorrectly-accepted.png',
-                                            fullPage: true
-                                        });
-                                        break;
-                                    }
+                                if (isRejectionMessage) {
+                                    console.log("✅ Found rejection message in MOST RECENT bot message!");
+                                    console.log(`📝 Full message: ${recentMessage}`);
+                                    rejectionFound = true;
+                                    await page.screenshot({
+                                        path: 'screenshots/blank-receipt-properly-rejected.png',
+                                        fullPage: true
+                                    });
+                                    break;
                                 }
-                            }
 
-                            if (rejectionFound || acceptanceFound) {
-                                break;
-                            }
+                                // Check for ACCEPTANCE (CRITICAL FAILURE)
+                                const isAcceptanceMessage = Array.isArray(acceptancePatterns)
+                                    ? acceptancePatterns.some(pattern => lowerText.includes(pattern.toLowerCase()))
+                                    : lowerText.includes(acceptancePatterns.toLowerCase());
 
-                            // Also check recent messages as backup
-                            const recentMessages = await getRecentMessages(page, 5);
+                                if (isAcceptanceMessage) {
+                                    console.log("❌ CRITICAL FAILURE: System ACCEPTED blank/blurry receipt!");
+                                    console.log(`📝 Acceptance message: ${recentMessage}`);
+                                    acceptanceFound = true;
+                                    receiptValidationResults.blurryReceiptAccepted = true;
+                                    receiptValidationResults.passed = false;
+                                    receiptValidationResults.failures.push("System INCORRECTLY ACCEPTED blank/blurry receipt");
 
-                            for (const message of recentMessages) {
-                                if (message) {
-                                    const lowerMessage = message.toLowerCase();
-
-                                    // Check for rejection
-                                    const isRejectionMessage = Array.isArray(rejectionPatterns)
-                                        ? rejectionPatterns.some(pattern => lowerMessage.includes(pattern.toLowerCase()))
-                                        : lowerMessage.includes(rejectionPatterns.toLowerCase());
-
-                                    if (isRejectionMessage) {
-                                        console.log("✅ Found rejection message in recent messages!");
-                                        rejectionFound = true;
-                                        break;
-                                    }
-
-                                    // Check for acceptance (FAILURE)
-                                    const isAcceptanceMessage = Array.isArray(acceptancePatterns)
-                                        ? acceptancePatterns.some(pattern => lowerMessage.includes(pattern.toLowerCase()))
-                                        : lowerMessage.includes(acceptancePatterns.toLowerCase());
-
-                                    if (isAcceptanceMessage) {
-                                        console.log("❌ CRITICAL: System ACCEPTED blank receipt (found in recent messages)!");
-                                        acceptanceFound = true;
-                                        receiptValidationResults.blurryReceiptAccepted = true;
-                                        receiptValidationResults.passed = false;
-                                        receiptValidationResults.failures.push("System accepted blank/blurry receipt (detected in recent messages)");
-                                        break;
-                                    }
+                                    await page.screenshot({
+                                        path: 'screenshots/FAILED-blank-receipt-incorrectly-accepted.png',
+                                        fullPage: true
+                                    });
+                                    break;
                                 }
                             }
 
@@ -917,20 +888,18 @@ test.describe('WhatsApp Automation Tests', () => {
                             console.log(`⚠️ Error during message check: ${innerError.message}`);
                         }
 
-                        if (rejectionFound || acceptanceFound) {
-                            break;
-                        }
+                        if (rejectionFound || acceptanceFound) break;
 
-                        console.log(`❌ System response not found yet. Waiting 3 seconds... (${attempts}/${maxAttempts})`);
+                        console.log(`❌ Response not found in most recent message. Waiting 3s... (${attempts}/${maxAttempts})`);
                         await page.waitForTimeout(3000);
                     }
 
                     // Handle results
                     if (rejectionFound) {
-                        console.log("🎉 Blank receipt validation PASSED - System CORRECTLY REJECTED blurry receipt!");
+                        console.log("🎉 Blank receipt validation PASSED - System CORRECTLY REJECTED!");
                     } else if (acceptanceFound) {
                         console.log("❌ Blank receipt validation FAILED - System ACCEPTED invalid receipt!");
-                        console.log("🛑 STOPPING receipt validation tests - will skip to next test (Chat with Agent)...");
+                        console.log("🛑 STOPPING receipt validation tests...");
                     } else {
                         const noResponseMessage = "⚠️ No clear response found for blank receipt after waiting";
                         console.log(noResponseMessage);
@@ -947,8 +916,11 @@ test.describe('WhatsApp Automation Tests', () => {
 
             // Step 4: Click Resubmit button
             await test.step('Click latest Resubmit New Receipt button', async () => {
-                if (receiptValidationResults.blurryReceiptAccepted) {
-                    console.log("⚠️ Skipping resubmit click - test already failed (blank receipt was accepted)");
+                if
+                    (receiptValidationResults.blurryReceiptAccepted ||
+                    receiptValidationResults.validReceiptRejected ||
+                    receiptValidationResults.secondBlurryReceiptAccepted) {
+                    console.log("⚠️ Skipping - test already failed");
                     return;
                 }
 
@@ -983,8 +955,11 @@ test.describe('WhatsApp Automation Tests', () => {
 
             // Step 5: Wait for NEW instruction message
             await test.step('Capture NEW detailed instruction message', async () => {
-                if (receiptValidationResults.blurryReceiptAccepted) {
-                    console.log("⚠️ Skipping instruction capture - test already failed (blank receipt was accepted)");
+                if
+                    (receiptValidationResults.blurryReceiptAccepted ||
+                    receiptValidationResults.validReceiptRejected ||
+                    receiptValidationResults.secondBlurryReceiptAccepted) {
+                    console.log("⚠️ Skipping - test already failed");
                     return;
                 }
 
@@ -1068,43 +1043,138 @@ test.describe('WhatsApp Automation Tests', () => {
                 }
             });
 
-            // Step 6: Upload valid receipt
+
+            // STEP 6: Upload valid receipt
+            // ===========================================
             await test.step('Upload valid receipt', async () => {
-                if (receiptValidationResults.blurryReceiptAccepted) {
-                    console.log("⚠️ Skipping valid receipt upload - test already failed (blank receipt was accepted)");
+                if (receiptValidationResults.blurryReceiptAccepted ||
+                    receiptValidationResults.validReceiptRejected ||
+                    receiptValidationResults.secondBlurryReceiptAccepted) {
+                    console.log("⚠️ Skipping - test already failed");
                     return;
                 }
 
                 console.log("📸 Starting valid receipt upload...");
 
-
                 try {
                     await uploadReceipt(page, receiptPath);
                     await page.waitForTimeout(15000);
 
-                    console.log("🔍 Checking for receipt acceptance...");
-                    const recentMessages = await getRecentMessages(page, 3);
-                    const recentText = recentMessages.join(' ').toLowerCase();
+                    let rejectionFound = false;
+                    let acceptanceFound = false;
+                    let attempts = 0;
+                    const maxAttempts = 10;
 
-                    console.log("📝 Recent messages after valid receipt upload:", recentMessages);
-
-
-
-                    // ✅ Use config patterns instead of hardcoded words
                     const acceptancePatterns = CAMPAIGN_CONFIG.expectedInstructions.submissionAccepted;
-                    const isReceiptAccepted = Array.isArray(acceptancePatterns)
-                        ? acceptancePatterns.some(pattern => recentText.includes(pattern.toLowerCase()))
-                        : recentText.includes(acceptancePatterns.toLowerCase());
+                    const rejectionPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptRejection;
 
-                    if (isReceiptAccepted) {
-                        console.log("✅ Valid receipt appears to have been accepted");
+                    while (!rejectionFound && !acceptanceFound && attempts < maxAttempts) {
+                        attempts++;
+                        console.log(`Attempt ${attempts}: Checking valid receipt response in MOST RECENT message...`);
+
+                        await page.waitForTimeout(5000);
+                        try {
+                            const recentMessage = await getMostRecentBotMessage(page);
+
+                            if (recentMessage) {
+                                console.log(`📩 Most recent bot message: "${recentMessage.substring(0, 100)}..."`);
+                                const lowerText = recentMessage.toLowerCase();
+
+                                // Check for REJECTION (CRITICAL FAILURE)
+                                const isRejectionMessage = Array.isArray(rejectionPatterns)
+                                    ? rejectionPatterns.some(pattern => lowerText.includes(pattern.toLowerCase()))
+                                    : lowerText.includes(rejectionPatterns.toLowerCase());
+
+                                if (isRejectionMessage) {
+                                    console.log("❌❌❌ CRITICAL FAILURE: System REJECTED valid receipt! ❌❌❌");
+                                    console.log(`📝 Rejection message: ${recentMessage}`);
+                                    console.log("🛑 This is a critical system error - STOPPING ALL TESTS");
+                                    console.log("🚪 Closing browser and terminating test suite...");
+
+                                    rejectionFound = true;
+                                    receiptValidationResults.validReceiptRejected = true;
+                                    receiptValidationResults.passed = false;
+                                    receiptValidationResults.criticalFailure = true; // NEW FLAG
+                                    receiptValidationResults.failures.push("CRITICAL: System INCORRECTLY REJECTED valid receipt");
+
+                                    await page.screenshot({
+                                        path: 'screenshots/CRITICAL-FAILURE-valid-receipt-rejected.png',
+                                        fullPage: true
+                                    });
+
+                                    // Close the browser immediately
+                                    await page.close();
+                                    await page.context().close();
+
+                                    // Throw error to fail the test
+                                    throw new Error("🛑 CRITICAL FAILURE: Valid receipt was rejected - Test suite terminated");
+                                }
+
+                                // Check for ACCEPTANCE (CORRECT)
+                                const isAcceptanceMessage = Array.isArray(acceptancePatterns)
+                                    ? acceptancePatterns.some(pattern => lowerText.includes(pattern.toLowerCase()))
+                                    : lowerText.includes(acceptancePatterns.toLowerCase());
+
+                                if (isAcceptanceMessage) {
+                                    console.log("✅ Valid receipt CORRECTLY accepted!");
+                                    console.log(`📝 Acceptance message: ${recentMessage}`);
+                                    acceptanceFound = true;
+                                    await page.screenshot({
+                                        path: 'screenshots/valid-receipt-correctly-accepted.png',
+                                        fullPage: true
+                                    });
+                                    break;
+                                }
+                            }
+
+                        } catch (innerError) {
+                            console.log(`⚠️ Error during message check: ${innerError.message}`);
+                        }
+
+                        if (rejectionFound || acceptanceFound) break;
+
+                        console.log(`⏳ Waiting for response... (${attempts}/${maxAttempts})`);
+                        await page.waitForTimeout(3000);
                     }
 
-                    await page.screenshot({ path: 'screenshots/valid-receipt-upload-complete.png', fullPage: true });
+                    if (rejectionFound) {
+                        // Already handled above - browser closed, error thrown
+                        return;
+
+                    } else if (acceptanceFound) {
+                        console.log("✅ Valid receipt validation PASSED");
+                        console.log("➡️ Will continue to next steps");
+
+                    } else {
+                        console.log("⚠️ No clear acceptance or rejection found for valid receipt");
+                        receiptValidationResults.passed = false;
+                        receiptValidationResults.failures.push("No clear response detected for valid receipt");
+                    }
+
+                    await page.screenshot({
+                        path: 'screenshots/valid-receipt-upload-complete.png',
+                        fullPage: true
+                    });
 
                 } catch (error) {
                     console.error("❌ Valid receipt upload failed:", error.message);
-                    await page.screenshot({ path: 'screenshots/valid-receipt-upload-failed.png', fullPage: true });
+
+                    // Only take screenshot if page is still open
+                    try {
+                        await page.screenshot({
+                            path: 'screenshots/valid-receipt-upload-failed.png',
+                            fullPage: true
+                        });
+                    } catch (screenshotError) {
+                        console.log("⚠️ Could not take screenshot (browser may be closed)");
+                    }
+
+                    // Mark as critical failure
+                    receiptValidationResults.validReceiptRejected = true;
+                    receiptValidationResults.passed = false;
+                    receiptValidationResults.criticalFailure = true;
+
+                    // Re-throw to stop test
                     throw error;
                 }
             });
@@ -1112,8 +1182,11 @@ test.describe('WhatsApp Automation Tests', () => {
 
             // Step 7: Detect success validation message
             await test.step('Wait for validation success message', async () => {
-                if (receiptValidationResults.blurryReceiptAccepted) {
-                    console.log("🚫 Skipping validation success check - test already failed (blank receipt was accepted)");
+                if
+                    (receiptValidationResults.blurryReceiptAccepted ||
+                    receiptValidationResults.validReceiptRejected ||
+                    receiptValidationResults.secondBlurryReceiptAccepted) {
+                    console.log("⚠️ Skipping - test already failed");
                     return;
                 }
 
@@ -1171,8 +1244,11 @@ test.describe('WhatsApp Automation Tests', () => {
 
             // Step 8: Click Submit New Receipt button
             await test.step('Click Submit New Receipt button after success message', async () => {
-                if (receiptValidationResults.blurryReceiptAccepted) {
-                    console.log("🚫 Skipping Submit New Receipt button - test already failed (first blank receipt was accepted)");
+                if
+                    (receiptValidationResults.blurryReceiptAccepted ||
+                    receiptValidationResults.validReceiptRejected ||
+                    receiptValidationResults.secondBlurryReceiptAccepted) {
+                    console.log("⚠️ Skipping - test already failed");
                     return;
                 }
 
@@ -1207,8 +1283,11 @@ test.describe('WhatsApp Automation Tests', () => {
 
             // Step 9: Wait for instruction message again (REUSING Step 5 logic)
             await test.step('Capture instruction message after Submit New Receipt', async () => {
-                if (receiptValidationResults.blurryReceiptAccepted) {
-                    console.log("⚠️ Skipping instruction capture - test already failed");
+                if
+                    (receiptValidationResults.blurryReceiptAccepted ||
+                    receiptValidationResults.validReceiptRejected ||
+                    receiptValidationResults.secondBlurryReceiptAccepted) {
+                    console.log("⚠️ Skipping - test already failed");
                     return;
                 }
 
@@ -1290,10 +1369,14 @@ test.describe('WhatsApp Automation Tests', () => {
                 }
             });
 
-            // Step 10: Upload second blank receipt
+
+            // STEP 10: Upload second blank receipt
+            // ===========================================
             await test.step('Upload second blank receipt after successful validation', async () => {
-                if (receiptValidationResults.blurryReceiptAccepted) {
-                    console.log("🚫 Skipping Upload second blank receipt - test already failed (first blank receipt was accepted)");
+                if (receiptValidationResults.blurryReceiptAccepted ||
+                    receiptValidationResults.validReceiptRejected ||
+                    receiptValidationResults.secondBlurryReceiptAccepted) {
+                    console.log("⚠️ Skipping - test already failed");
                     return;
                 }
 
@@ -1301,43 +1384,63 @@ test.describe('WhatsApp Automation Tests', () => {
 
                 try {
                     await uploadReceipt(page, blankReceiptPath);
-                    console.log("⏳ Waiting for system response...");
                     await page.waitForTimeout(15000);
-                    console.log("🔍 Looking for rejection message for second blank receipt...");
 
                     let rejectionFound = false;
+                    let acceptanceFound = false;
                     let attempts = 0;
                     const maxAttempts = 10;
 
-                    while (!rejectionFound && attempts < maxAttempts) {
+                    const rejectionPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptRejection;
+                    const acceptancePatterns = CAMPAIGN_CONFIG.expectedInstructions.submissionAccepted;
+
+                    while (!rejectionFound && !acceptanceFound && attempts < maxAttempts) {
                         attempts++;
+                        console.log(`Attempt ${attempts}: Checking for rejection/acceptance in MOST RECENT message...`);
 
-                        await page.waitForTimeout(15000);
-
-                        console.log(`Attempt ${attempts}: Checking for rejection instruction message...`);
+                        await page.waitForTimeout(3000);
 
                         try {
-                            const selectableTexts = await page.$$('span._ao3e.selectable-text.copyable-text');
-                            console.log(`Found ${selectableTexts.length} selectable text elements`);
+                            const recentMessage = await getMostRecentBotMessage(page);
 
-                            const receiptUploadPatterns = CAMPAIGN_CONFIG.expectedInstructions.receiptRejection;
+                            if (recentMessage) {
+                                console.log(`📩 Most recent bot message: "${recentMessage.substring(0, 100)}..."`);
+                                const lowerText = recentMessage.toLowerCase();
 
-                            for (let element of selectableTexts) {
-                                const text = await element.textContent();
+                                // Check for REJECTION (CORRECT behavior)
+                                const matchedRejectionPatterns = rejectionPatterns.filter(pattern =>
+                                    lowerText.includes(pattern.toLowerCase())
+                                );
 
-                                if (text) {
-                                    const lowerText = text.toLowerCase();
-                                    const matchedPatterns = receiptUploadPatterns.filter(pattern =>
-                                        lowerText.includes(pattern.toLowerCase())
-                                    );
+                                if (matchedRejectionPatterns.length > 0) {
+                                    console.log(`✅ Second blank receipt CORRECTLY rejected! Matched: ${JSON.stringify(matchedRejectionPatterns)}`);
+                                    console.log(`📝 Full message: ${recentMessage}`);
+                                    rejectionFound = true;
+                                    await page.screenshot({
+                                        path: 'screenshots/second-blank-receipt-rejected.png',
+                                        fullPage: true
+                                    });
+                                    break;
+                                }
 
-                                    if (matchedPatterns.length > 0) {
-                                        console.log(`✅ Found receipt instruction message for second blank receipt! Matched: ${JSON.stringify(matchedPatterns)}`);
-                                        console.log(`📝 Full message: ${text}`);
-                                        rejectionFound = true;
-                                        await page.screenshot({ path: 'screenshots/second-blank-receipt-rejected.png', fullPage: true });
-                                        break;
-                                    }
+                                // Check for ACCEPTANCE (CRITICAL FAILURE)
+                                const matchedAcceptancePatterns = acceptancePatterns.filter(pattern =>
+                                    lowerText.includes(pattern.toLowerCase())
+                                );
+
+                                if (matchedAcceptancePatterns.length > 0) {
+                                    console.log(`❌ CRITICAL FAILURE: System ACCEPTED second blank receipt!`);
+                                    console.log(`📝 Acceptance message: ${recentMessage}`);
+                                    acceptanceFound = true;
+                                    receiptValidationResults.secondBlurryReceiptAccepted = true;
+                                    receiptValidationResults.passed = false;
+                                    receiptValidationResults.failures.push("System INCORRECTLY ACCEPTED second blank/blurry receipt");
+
+                                    await page.screenshot({
+                                        path: 'screenshots/FAILED-second-blank-receipt-incorrectly-accepted.png',
+                                        fullPage: true
+                                    });
+                                    break;
                                 }
                             }
 
@@ -1345,20 +1448,22 @@ test.describe('WhatsApp Automation Tests', () => {
                             console.log(`⚠️ Error during message check: ${innerError.message}`);
                         }
 
-                        if (rejectionFound) {
-                            break;
-                        }
-                        console.log(`❌ Rejection message not found yet. Waiting 3 seconds... (${attempts}/${maxAttempts})`);
+                        if (rejectionFound || acceptanceFound) break;
+
+                        console.log(`❌ Response not found. Waiting 3s... (${attempts}/${maxAttempts})`);
                         await page.waitForTimeout(3000);
                     }
 
-                    if (!rejectionFound) {
+                    if (rejectionFound) {
+                        console.log("✅ System CORRECTLY REJECTED second blank receipt!");
+                    } else if (acceptanceFound) {
+                        console.log("❌ Second blank receipt validation FAILED!");
+                        console.log("🛑 STOPPING receipt validation tests...");
+                    } else {
                         const noResponseMessage = "⚠️ No rejection message found for second blank receipt";
                         console.log(noResponseMessage);
                         receiptValidationResults.passed = false;
                         receiptValidationResults.failures.push(noResponseMessage);
-                    } else {
-                        console.log("✅ System CORRECTLY REJECTED second blank receipt!");
                     }
 
                 } catch (error) {
@@ -1368,10 +1473,14 @@ test.describe('WhatsApp Automation Tests', () => {
                 }
             });
 
+
             // Step 11: Click Proceed button
             await test.step('Click Proceed button', async () => {
-                if (receiptValidationResults.blurryReceiptAccepted) {
-                    console.log("🚫 Skipping Proceed button - test already failed (first blank receipt was accepted)");
+                if
+                    (receiptValidationResults.blurryReceiptAccepted ||
+                    receiptValidationResults.validReceiptRejected ||
+                    receiptValidationResults.secondBlurryReceiptAccepted) {
+                    console.log("⚠️ Skipping - test already failed");
                     return;
                 }
 
@@ -1405,15 +1514,29 @@ test.describe('WhatsApp Automation Tests', () => {
                 }
             });
 
-
             // FINAL: Handle receipt validation test result - FAIL but keep browser open
             if (!receiptValidationResults.passed) {
                 console.log("\n========== RECEIPT VALIDATION TEST RESULTS ==========");
                 console.log("⚠️ Receipt validation completed with FAILURES:");
                 receiptValidationResults.failures.forEach(failure => console.log(`  - ${failure}`));
 
-                if (receiptValidationResults.blurryReceiptAccepted) {
-                    console.log("\n📋 CRITICAL ISSUE: System accepted invalid (blank/blurry) receipt(s)");
+                // UPDATE THIS SECTION - More detailed critical issue reporting
+                if (receiptValidationResults.blurryReceiptAccepted ||
+                    receiptValidationResults.validReceiptRejected ||
+                    receiptValidationResults.secondBlurryReceiptAccepted) {
+
+                    console.log("\n📋 CRITICAL ISSUES DETECTED:");
+
+                    if (receiptValidationResults.blurryReceiptAccepted) {
+                        console.log("  ❌ First blank/blurry receipt was INCORRECTLY ACCEPTED");
+                    }
+                    if (receiptValidationResults.validReceiptRejected) {
+                        console.log("  ❌ Valid receipt was INCORRECTLY REJECTED");
+                    }
+                    if (receiptValidationResults.secondBlurryReceiptAccepted) {
+                        console.log("  ❌ Second blank/blurry receipt was INCORRECTLY ACCEPTED");
+                    }
+
                     console.log("🛑 Remaining receipt validation steps were skipped");
                 }
 
@@ -1422,14 +1545,16 @@ test.describe('WhatsApp Automation Tests', () => {
                 console.log("⏭️ Moving to next test: Chat with Agent...");
                 console.log("====================================================\n");
 
-                // Add detailed info for reporting
+                // UPDATE THIS - More detailed reporting
                 test.info().attachments.push({
                     name: 'receipt-validation-failure-details',
                     contentType: 'text/plain',
                     body: Buffer.from(
                         `Receipt Validation Failures:\n${receiptValidationResults.failures.join('\n')}\n\n` +
-                        `Blurry receipt accepted: ${receiptValidationResults.blurryReceiptAccepted}\n` +
-                        `Test skipped remaining steps: ${receiptValidationResults.blurryReceiptAccepted}`
+                        `First blurry receipt incorrectly accepted: ${receiptValidationResults.blurryReceiptAccepted}\n` +
+                        `Valid receipt incorrectly rejected: ${receiptValidationResults.validReceiptRejected}\n` +
+                        `Second blurry receipt incorrectly accepted: ${receiptValidationResults.secondBlurryReceiptAccepted}\n` +
+                        `Test skipped remaining steps: ${receiptValidationResults.blurryReceiptAccepted || receiptValidationResults.validReceiptRejected || receiptValidationResults.secondBlurryReceiptAccepted}`
                     )
                 });
 
@@ -1443,6 +1568,7 @@ test.describe('WhatsApp Automation Tests', () => {
                 console.log("✅ Valid receipt was properly accepted");
                 console.log("====================================================\n");
             }
+
 
         } catch (error) {
             console.error("❌ Receipt validation test encountered an error:", error.message);
@@ -1466,9 +1592,17 @@ test.describe('WhatsApp Automation Tests', () => {
     test('Chat with Agent functionality', async () => {
         test.setTimeout(300000); // 5 minutes
 
+        // ✅ 
+        if (receiptValidationResults.criticalFailure || receiptValidationResults.validReceiptRejected) {
+            console.log("🛑 SKIPPING Chat with Agent test - Previous test had critical failure");
+            console.log("❌ Valid receipt was rejected - cannot proceed to Chat with Agent");
+            test.skip();
+            return;
+        }
+
         // Test configuration
         const TEST_CONFIG = {
-            agentMessage: "Hi...How to do this...",  //
+            agentMessage: "Hi...How to do this...",
             expectedResponse: "Got a question? Just type in your enquiry below — our Agent will get back to you within 3 working days. We're here to help!",
             timeouts: {
                 responseWait: 15000
@@ -1504,7 +1638,7 @@ test.describe('WhatsApp Automation Tests', () => {
             await page.waitForTimeout(10000);
         }
     });
-});
+
 
 
 
